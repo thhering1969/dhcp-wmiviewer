@@ -1,7 +1,5 @@
-// MainForm.Leases.Helpers.cs
-// DIESE DATEI WIRD KOMPLETT ANGEZEIGT — EINFACH KOPIEREN & EINFÜGEN
+﻿// MainForm.Leases.Helpers.cs
 using System;
-using System.Data;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -12,48 +10,96 @@ namespace DhcpWmiViewer
     public partial class MainForm : Form
     {
         /// <summary>
-        /// Versucht, einen Wert aus einer DataGridViewRow zu lesen, indem mehrere mögliche Spaltennamen
-        /// durchprobiert werden (z.B. "Col_AddressState" oder "AddressState").
-        /// Liefert null, wenn keine Spalte gefunden oder Wert null/leer ist.
+        /// Sucht in der gegebenen Row nach einer Zelle, deren Spalte einen der angegebenen Namen hat.
+        /// Als Namen werden versucht: Column.Name, Column.DataPropertyName, Column.HeaderText (in dieser Reihenfolge).
+        /// Liefert den Wert als string zurück oder null, falls nicht gefunden / leer.
+        /// Diese Implementierung vermeidet problematische string-Indexer auf DataGridViewRow.Cells.
         /// </summary>
         protected string? TryGetCellValue(DataGridViewRow? row, params string[] names)
         {
             try
             {
                 if (row == null || names == null || names.Length == 0) return null;
-                foreach (var n in names)
+
+                // Versuche zuerst die DataGridView-Referenz (falls vorhanden) für schnellen Lookup
+                var grid = row.DataGridView;
+
+                foreach (var name in names)
                 {
-                    try
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    int colIdx = -1;
+
+                    // 1) Wenn das globale dgvLeases bekannt ist, versuche direkt über dessen Columns (Name)
+                    if (dgvLeases != null)
                     {
-                        if (row.Cells.Contains(n))
+                        var colByName = dgvLeases.Columns.Cast<DataGridViewColumn>()
+                                            .FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+                        if (colByName != null) colIdx = colByName.Index;
+                    }
+
+                    // 2) Falls noch nicht gefunden, nutze die Columns-Sammlung der Row.DataGridView (falls vorhanden)
+                    if (colIdx < 0 && grid != null)
+                    {
+                        var col = grid.Columns.Cast<DataGridViewColumn>()
+                                    .FirstOrDefault(c =>
+                                        string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(c.DataPropertyName ?? string.Empty, name, StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(c.HeaderText ?? string.Empty, name, StringComparison.OrdinalIgnoreCase));
+                        if (col != null) colIdx = col.Index;
+                    }
+
+                    // 3) Falls wir eine sinnvolle Index gefunden haben, hole die Zelle und ihren Wert
+                    if (colIdx >= 0 && colIdx < row.Cells.Count)
+                    {
+                        var cell = row.Cells[colIdx];
+                        if (cell?.Value != null)
                         {
-                            var v = row.Cells[n]?.Value;
-                            if (v != null)
-                            {
-                                var s = v.ToString();
-                                if (!string.IsNullOrWhiteSpace(s)) return s;
-                            }
+                            var s = cell.Value.ToString();
+                            if (!string.IsNullOrWhiteSpace(s)) return s;
                         }
                     }
-                    catch { /* ignore per-cell errors */ }
+
+                    // 4) Fallback: suche alle Zellen in der Row und vergleiche OwningColumn-Infos (defensiv)
+                    for (int i = 0; i < row.Cells.Count; i++)
+                    {
+                        try
+                        {
+                            var c = row.Cells[i];
+                            var owning = c?.OwningColumn;
+                            if (owning == null) continue;
+                            if (string.Equals(owning.Name, name, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(owning.DataPropertyName ?? string.Empty, name, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(owning.HeaderText ?? string.Empty, name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (c.Value != null)
+                                {
+                                    var s = c.Value.ToString();
+                                    if (!string.IsNullOrWhiteSpace(s)) return s;
+                                }
+                            }
+                        }
+                        catch { /* ignore problematic cells */ }
+                    }
                 }
             }
-            catch { /* swallow */ }
+            catch { /* swallow - this helper must be resilient */ }
+
             return null;
         }
 
         /// <summary>
-        /// Liest die IP, ClientId und HostName aus einer Lease-DataGridViewRow und liefert
-        /// ein Tupel. Defensive: bei Fehlern werden leere Strings zurückgegeben.
+        /// Liest die drei typischen Werte (IP, ClientId, HostName) robust aus einer Lease-Row.
+        /// Liefert leere Strings bei Fehlern.
         /// </summary>
         protected (string Ip, string ClientId, string HostName) ReadLeaseRowValuesSafe(DataGridViewRow row)
         {
             try
             {
-                var ip = TryGetCellValue(row, "IPAddress", "Col_IPAddress") ?? string.Empty;
-                var clientId = TryGetCellValue(row, "ClientId", "Col_ClientId") ?? string.Empty;
-                var hostName = TryGetCellValue(row, "HostName", "Col_HostName") ?? string.Empty;
-                return (ip, clientId, hostName);
+                var ip = TryGetCellValue(row, "IPAddress", "Col_IPAddress", "IP", "IPAdress") ?? string.Empty;
+                var clientId = TryGetCellValue(row, "ClientId", "Col_ClientId", "Client") ?? string.Empty;
+                var hostName = TryGetCellValue(row, "HostName", "Col_HostName", "Name", "Host") ?? string.Empty;
+
+                return (ip.Trim(), clientId.Trim(), hostName.Trim());
             }
             catch
             {
@@ -62,108 +108,65 @@ namespace DhcpWmiViewer
         }
 
         /// <summary>
-        /// Reflection-invoker (keine Exceptions nach außen) — ruft eine Instanzmethode mit dem Namen methodName
-        /// auf *diesem* MainForm-Objekt, falls vorhanden. Nutzt BindingFlags.Instance | NonPublic.
-        /// Diese Methode ist bereits vorhanden in manchen Partials — hier als proteceted impl.
+        /// Versucht, eine benannte private/protected async/sync Methode auf diesem Form-Objekt per Reflection aufzurufen,
+        /// falls vorhanden. Die Methode darf entweder Task zurückgeben oder void. Parameterlos.
+        /// Fehler werden gefangen und geschluckt (GUI-robustheit).
+        /// WICHTIG: await des Task ohne ConfigureAwait(false) damit UI-Fortsetzungen wieder auf UI-Thread laufen.
         /// </summary>
         protected async Task InvokeOptionalHandlerAsync(string methodName)
         {
+            if (string.IsNullOrWhiteSpace(methodName)) return;
+
             try
             {
-                var mi = this.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
-                if (mi != null)
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                var mi = this.GetType().GetMethod(methodName, flags, null, Type.EmptyTypes, null);
+                if (mi == null)
                 {
-                    var ret = mi.Invoke(this, null);
-                    if (ret is Task t) await t.ConfigureAwait(false);
-                    else if (ret is ValueTask vt) await vt.AsTask().ConfigureAwait(false);
+                    try { MessageBox.Show(this, $"Handler '{methodName}' nicht gefunden (Reflection).", "DEBUG: Handler fehlt", MessageBoxButtons.OK, MessageBoxIcon.Warning); } catch { }
                     return;
                 }
 
-                MessageBox.Show(this, $"Handler '{methodName}' ist nicht vorhanden.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, $"Fehler beim Aufrufen von '{methodName}': {ex.Message}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        /// <summary>
-        /// Neu: Versucht per Reflection, eine statische DhcpManager-Methode mit Name methodName aufzurufen.
-        /// Erwartetes Verhalten:
-        ///  - Wenn ein Task zurückgegeben wird: await; wenn Task<TResult> und TResult is bool -> Ergebnis zurückgeben.
-        ///  - Wenn bool direkt zurückgegeben wird: zurückgeben.
-        ///  - Bei void / Task (ohne Result): bei erfolgreichem Aufruf true zurückgeben.
-        ///  - Bei Fehlern: false. Die Methode probiert alle Overloads mit passender Parameteranzahl und
-        ///    versucht, sie aufzurufen (Fehler werden gefangen).
-        /// 
-        /// Usage sample (so wie im Code): 
-        ///   var created = await TryInvokeDhcpManagerBoolMethodAsync("CreateReservationFromLeaseAsync", server, scopeId, ip, clientId, name, desc, new Func<string, PSCredential?>(GetCredentialsForServer));
-        /// </summary>
-        protected async Task<bool> TryInvokeDhcpManagerBoolMethodAsync(string methodName, params object?[] args)
-        {
-            try
-            {
-                var t = typeof(DhcpManager);
-                var methods = t.GetMethods(BindingFlags.Public | BindingFlags.Static)
-                               .Where(m => string.Equals(m.Name, methodName, StringComparison.Ordinal));
-
-                foreach (var mi in methods)
+                object? invokeResult = null;
+                try
                 {
-                    // quick filter: same parameter count (best-effort)
-                    var pars = mi.GetParameters();
-                    if (pars.Length != args.Length) continue;
+                    invokeResult = mi.Invoke(this, null);
+                }
+                catch (TargetInvocationException tie)
+                {
+                    var inner = tie.InnerException ?? tie;
+                    try { MessageBox.Show(this, $"Handler '{methodName}' löste eine Ausnahme aus:\n{inner}", "DEBUG: Handler-Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                    return;
+                }
+                catch (Exception exInvoke)
+                {
+                    try { MessageBox.Show(this, $"Invoke fehlgeschlagen: {exInvoke}", "DEBUG: Invoke-Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                    return;
+                }
 
+                if (invokeResult is Task t)
+                {
                     try
                     {
-                        // Try invoke; if parameter types don't match Invoke will throw -> catch and continue
-                        var invokeResult = mi.Invoke(null, args);
-
-                        // null result -> for many void or Task methods, null can be OK -> interpret as success
-                        if (invokeResult == null) return true;
-
-                        // If Task
-                        if (invokeResult is Task task)
-                        {
-                            await task.ConfigureAwait(false);
-
-                            // If generic Task<TResult>, try read Result
-                            var taskType = task.GetType();
-                            if (taskType.IsGenericType)
-                            {
-                                var resProp = taskType.GetProperty("Result", BindingFlags.Instance | BindingFlags.Public);
-                                if (resProp != null)
-                                {
-                                    var val = resProp.GetValue(task);
-                                    if (val is bool b) return b;
-                                    // if other result type, treat non-null as success
-                                    return val != null;
-                                }
-                            }
-
-                            // non-generic Task completed -> treat as success
-                            return true;
-                        }
-
-                        // If direct bool
-                        if (invokeResult is bool bb) return bb;
-
-                        // other non-null return -> treat as success
-                        return invokeResult != null;
+                        // WICHTIG: hier kein ConfigureAwait(false) — wir wollen UI-Fortsetzungen wieder auf UI-Thread
+                        await t;
                     }
-                    catch
+                    catch (Exception exAwait)
                     {
-                        // try next overload
-                        continue;
+                        try
+                        {
+                            this.BeginInvoke(new Action(() =>
+                                MessageBox.Show(this, $"Handler '{methodName}' warf während await eine Ausnahme:\n{exAwait}", "DEBUG: Handler-Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                            ));
+                        }
+                        catch { /* ignore */ }
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // swallow
+                try { MessageBox.Show(this, $"InvokeOptionalHandlerAsync: {ex}", "DEBUG: Reflection Error", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
             }
-
-            // nothing matched or all failed
-            return false;
         }
     }
 }

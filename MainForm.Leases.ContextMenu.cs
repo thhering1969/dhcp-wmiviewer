@@ -55,22 +55,51 @@ namespace DhcpWmiViewer
                 if (containsReservation)
                 {
                     var miChange = new ToolStripMenuItem("Change reservation IP...");
-                    // Direktaufruf statt Reflection
-                    miChange.Click += async (s, args) => await OnChangeReservationFromLeaseRowAsync();
+                    // Wichtig: kein ConfigureAwait(false) in Click-Lambda verwenden
+                    miChange.Click += async (s, args) =>
+                    {
+                        try
+                        {
+                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync");
+                        }
+                        catch (Exception ex)
+                        {
+                            try { MessageBox.Show(this, "Fehler im Click-Handler: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                        }
+                    };
                     contextMenuLeases.Items.Add(miChange);
                 }
                 else if (containsActive || containsLease)
                 {
                     var miConvert = new ToolStripMenuItem("Create reservation from lease...");
-                    // Direktaufruf statt Reflection
-                    miConvert.Click += async (s, args) => await OnCreateReservationFromLeaseAsync();
+                    // Wichtig: kein ConfigureAwait(false) in Click-Lambda verwenden
+                    miConvert.Click += async (s, args) =>
+                    {
+                        try
+                        {
+                            await InvokeOptionalHandlerAsync("OnCreateReservationFromLeaseAsync");
+                        }
+                        catch (Exception ex)
+                        {
+                            try { MessageBox.Show(this, "Fehler im Click-Handler: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                        }
+                    };
                     contextMenuLeases.Items.Add(miConvert);
                 }
                 else
                 {
                     var miChange = new ToolStripMenuItem("Change reservation IP...");
-                    // Direktaufruf statt Reflection
-                    miChange.Click += async (s, args) => await OnChangeReservationFromLeaseRowAsync();
+                    miChange.Click += async (s, args) =>
+                    {
+                        try
+                        {
+                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync");
+                        }
+                        catch (Exception ex)
+                        {
+                            try { MessageBox.Show(this, "Fehler im Click-Handler: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                        }
+                    };
                     contextMenuLeases.Items.Add(miChange);
                 }
 
