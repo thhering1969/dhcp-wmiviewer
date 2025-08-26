@@ -14,4 +14,9 @@
     <PackageReference Include="System.Management" Version="9.0.8" />
   </ItemGroup>
 
+  <!-- Temporärer Ausschluss: alle diagnostics_*-Ordner vom Kompilieren ausschließen -->
+  <ItemGroup>
+    <Compile Remove="diagnostics_*/**/*.cs" />
+  </ItemGroup>
+
 </Project>
