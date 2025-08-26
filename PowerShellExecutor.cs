@@ -1,0 +1,338 @@
+// PowerShellExecutor.cs
+using System;
+using System.Collections.ObjectModel;
+using System.Data;
+using System.Linq;
+using System.Management.Automation;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace DhcpWmiViewer
+{
+    internal static class PowerShellExecutor
+    {
+        /// <summary>
+        /// Prüft, ob die aktuelle Maschine ein DHCP-Server ist.
+        /// Wir erkennen das, indem wir lokal nach dem Dienst "DHCPServer" suchen
+        /// oder nach dem Modul "DhcpServer".
+        /// </summary>
+        private static bool IsLocalDhcpServer()
+        {
+            try
+            {
+                using (var ps = PowerShell.Create())
+                {
+                    // Versuche Dienst zu finden (am zuverlässigsten)
+                    ps.AddScript("Get-Service -Name 'DHCPServer' -ErrorAction SilentlyContinue | Select-Object -First 1");
+                    var svc = ps.Invoke();
+                    if (svc != null && svc.Count > 0)
+                        return true;
+
+                    ps.Commands.Clear();
+                    // Fallback: Modul prüfen
+                    ps.AddScript("Get-Module -ListAvailable DhcpServer | Select-Object -First 1");
+                    var mod = ps.Invoke();
+                    if (mod != null && mod.Count > 0)
+                        return true;
+                }
+            }
+            catch
+            {
+                // Bei Fehlern sicherheitsbewusst: false zurückgeben -> kein lokaler DHCP-Server
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Führt ein PowerShell-Script asynchron aus.
+        /// Wichtig: Führt lokal nur aus, wenn die App auf einem DHCP-Server läuft.
+        /// Ansonsten wird per Invoke-Command (WinRM) gegen den Zielhost gearbeitet.
+        /// </summary>
+        public static Task<Collection<PSObject>> InvokeScriptAsync(string server, string script, Func<string, PSCredential>? getCredentials = null)
+        {
+            return Task.Run(() =>
+            {
+                // Normalisiere server-Parameter
+                var requested = string.IsNullOrWhiteSpace(server) ? "." : server.Trim();
+                // Zielhost für Invoke-Command: wenn "." angegeben, verwende Environment.MachineName (aber wir entscheiden weiter unten)
+                var targetHost = requested == "." ? Environment.MachineName : requested;
+
+                // Prüfe, ob wir lokal auf einem DHCP-Server laufen; dann darf lokal ausgeführt werden.
+                var localIsDhcpServer = IsLocalDhcpServer();
+
+                // Wrapper-Script: Importiere DhcpServer-Module (Stop/Continue je nach Bedarf)
+                var wrapperScript = "Import-Module DhcpServer -ErrorAction Stop;" + Environment.NewLine + script;
+
+                // Wenn wir lokal auf einem DHCP-Server sind UND Ziel ist die lokale Maschine -> lokal ausführen
+                if (localIsDhcpServer &&
+                    (requested == "." ||
+                     targetHost.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase) ||
+                     targetHost.Equals("localhost", StringComparison.OrdinalIgnoreCase)))
+                {
+                    using (var psLocal = PowerShell.Create())
+                    {
+                        psLocal.AddScript(wrapperScript);
+                        var localResults = psLocal.Invoke();
+
+                        if (psLocal.HadErrors)
+                        {
+                            var errs = psLocal.Streams.Error?.Select(e => e.ToString()).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray() ?? Array.Empty<string>();
+                            throw new InvalidOperationException("Local PowerShell errors: " + string.Join(" | ", errs));
+                        }
+
+                        return localResults ?? new Collection<PSObject>();
+                    }
+                }
+
+                // Sonst: Immer remote via Invoke-Command (WinRM). Versuch zuerst ohne Credentials,
+                // bei Auth/WinRM-Fehlern einmal mit getCredentials retryen.
+
+                string remoteWrapped = wrapperScript;
+
+                static string[] CollectErrorMessages(PowerShell ps)
+                {
+                    try
+                    {
+                        return ps.Streams.Error?.Select(er => er.ToString()).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray() ?? Array.Empty<string>();
+                    }
+                    catch
+                    {
+                        return Array.Empty<string>();
+                    }
+                }
+
+                // Helper: Do a remote invoke with optional credential, and throw on ps.HadErrors
+                Collection<PSObject> DoRemoteInvoke(PSCredential? cred)
+                {
+                    using (var ps = PowerShell.Create())
+                    {
+                        var sb = ScriptBlock.Create(remoteWrapped);
+                        ps.AddCommand("Invoke-Command")
+                          .AddParameter("ComputerName", targetHost)
+                          .AddParameter("ScriptBlock", sb);
+
+                        if (cred != null)
+                            ps.AddParameter("Credential", cred);
+
+                        var res = ps.Invoke();
+                        if (ps.HadErrors)
+                        {
+                            var errs = CollectErrorMessages(ps);
+                            throw new InvalidOperationException("PowerShell remote errors: " + string.Join(" | ", errs));
+                        }
+                        return res ?? new Collection<PSObject>();
+                    }
+                }
+
+                // 1) Versuch ohne Credentials
+                Collection<PSObject>? firstResults = null;
+                string[] firstErrors = Array.Empty<string>();
+                try
+                {
+                    using (var psTest = PowerShell.Create())
+                    {
+                        var sbTest = ScriptBlock.Create(remoteWrapped);
+                        psTest.AddCommand("Invoke-Command")
+                              .AddParameter("ComputerName", targetHost)
+                              .AddParameter("ScriptBlock", sbTest);
+
+                        firstResults = psTest.Invoke();
+                        firstErrors = CollectErrorMessages(psTest);
+
+                        if (!psTest.HadErrors)
+                            return firstResults ?? new Collection<PSObject>();
+                    }
+                }
+                catch (Exception exFirst)
+                {
+                    firstErrors = new[] { exFirst.Message };
+                }
+
+                // 2) Prüfe, ob Fehler nach Auth/WinRM/Transport aussehen
+                bool looksLikeAuthOrTransport = firstErrors.Any(m =>
+                    m.IndexOf("winrm", StringComparison.OrdinalIgnoreCase) >= 0
+                    || m.IndexOf("transport", StringComparison.OrdinalIgnoreCase) >= 0
+                    || m.IndexOf("cannot connect", StringComparison.OrdinalIgnoreCase) >= 0
+                    || m.IndexOf("access denied", StringComparison.OrdinalIgnoreCase) >= 0
+                    || m.IndexOf("authentication", StringComparison.OrdinalIgnoreCase) >= 0
+                    || m.IndexOf("unauthorized", StringComparison.OrdinalIgnoreCase) >= 0
+                );
+
+                if (!looksLikeAuthOrTransport)
+                {
+                    var msg = firstErrors.Length > 0 ? string.Join(" | ", firstErrors) : "Remote invocation failed (unknown reason).";
+                    throw new InvalidOperationException(msg);
+                }
+
+                if (getCredentials == null)
+                {
+                    throw new InvalidOperationException("Remote invocation failed (auth/transport). No credential callback available. Details: " + string.Join(" | ", firstErrors));
+                }
+
+                // Fordere Credentials an und versuche einmal neu
+                PSCredential? credRetry = null;
+                try
+                {
+                    credRetry = getCredentials(targetHost);
+                }
+                catch (Exception credEx)
+                {
+                    throw new InvalidOperationException("Requesting credentials failed: " + credEx.Message, credEx);
+                }
+
+                if (credRetry == null)
+                {
+                    throw new InvalidOperationException("No credentials provided for remote invocation.");
+                }
+
+                try
+                {
+                    return DoRemoteInvoke(credRetry);
+                }
+                catch (Exception exRetry)
+                {
+                    var combined = string.Join(" | ", firstErrors.Where(s => !string.IsNullOrWhiteSpace(s)).Concat(new[] { exRetry.Message }));
+                    throw new InvalidOperationException("Remote invocation failed after credential retry: " + combined, exRetry);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Zeigt (falls aktiviert) eine Vorschau des Build-Outputs und führt die übergebene
+        /// PowerShell-Instanz synchron aus. Wird von bestehendem Code (DhcpManager) erwartet.
+        /// </summary>
+        public static Collection<PSObject> InvokeWithPreview(PowerShell ps)
+        {
+            if (ps == null) return new Collection<PSObject>();
+
+            // Erzeuge Scripttext zur Anzeige
+            var scriptText = Helpers.BuildCommandsText(ps);
+
+            if (DhcpManager.ShowCommandPreview)
+            {
+                var proceed = TerminalPreview.ShowTerminal(scriptText);
+                if (!proceed)
+                    throw new OperationCanceledException("User cancelled command preview.");
+            }
+
+            // Führe die bereits konfigurierte PowerShell-Instanz aus (lokal konfiguriert vom Aufrufer,
+            // dieser Pfad wird weiterhin verwendet, z.B. bei internem Preflight)
+            var results = ps.Invoke();
+            return results ?? new Collection<PSObject>();
+        }
+
+        /// <summary>
+        /// Führt eine Query: buildPs setzt die gewünschten Commands auf ein PowerShell-Objekt.
+        /// Danach wird das Script (Text) erzeugt, remote ausgeführt und in DataTable konvertiert.
+        /// </summary>
+        public static async Task<DataTable> ExecutePowerShellQueryAsync(
+            string server,
+            Func<string, PSCredential> getCredentials,
+            Action<PowerShell> buildPs,
+            Action<DataTable> ensureSchema,
+            bool isDynamic = false)
+        {
+            using (var temp = PowerShell.Create())
+            {
+                buildPs(temp);
+
+                var scriptText = Helpers.BuildCommandsText(temp);
+                temp.Commands.Clear();
+
+                if (DhcpManager.ShowCommandPreview)
+                {
+                    var proceed = TerminalPreview.ShowTerminal(scriptText);
+                    if (!proceed)
+                        throw new OperationCanceledException("User cancelled command preview.");
+                }
+
+                var results = await InvokeScriptAsync(server ?? ".", scriptText, getCredentials).ConfigureAwait(false);
+
+                var dt = new DataTable();
+
+                if (isDynamic)
+                {
+                    if (results != null && results.Count > 0)
+                    {
+                        foreach (var prop in results[0].Properties)
+                        {
+                            var name = prop.Name ?? "Column";
+                            if (!dt.Columns.Contains(name))
+                                dt.Columns.Add(name, typeof(string));
+                        }
+
+                        foreach (var r in results)
+                        {
+                            var row = dt.NewRow();
+                            foreach (var p in r.Properties)
+                            {
+                                var colName = p.Name ?? "";
+                                if (!dt.Columns.Contains(colName))
+                                    dt.Columns.Add(colName, typeof(string));
+                                row[colName] = p.Value?.ToString() ?? string.Empty;
+                            }
+                            dt.Rows.Add(row);
+                        }
+                    }
+                }
+                else
+                {
+                    ensureSchema(dt);
+
+                    if (results != null && results.Count > 0)
+                    {
+                        foreach (var r in results)
+                        {
+                            var row = dt.NewRow();
+                            foreach (DataColumn c in dt.Columns)
+                            {
+                                try
+                                {
+                                    var prop = r.Properties[c.ColumnName];
+                                    if (prop != null && prop.Value != null)
+                                        row[c.ColumnName] = prop.Value.ToString();
+                                    else
+                                        row[c.ColumnName] = string.Empty;
+                                }
+                                catch
+                                {
+                                    row[c.ColumnName] = string.Empty;
+                                }
+                            }
+                            dt.Rows.Add(row);
+                        }
+                    }
+                }
+
+                return dt;
+            }
+        }
+
+        /// <summary>
+        /// Führt eine PowerShell-Action (Add/Remove/Set) aus. buildAction konfiguriert die PowerShell-Instanz.
+        /// Das Script wird remote ausgeführt (oder lokal, falls IsLocalDhcpServer() true und target lokal ist).
+        /// </summary>
+        public static Task ExecutePowerShellActionAsync(string server, Func<string, PSCredential> getCredentials, Action<PowerShell> buildAction)
+        {
+            return Task.Run(async () =>
+            {
+                using (var temp = PowerShell.Create())
+                {
+                    buildAction(temp);
+                    var scriptText = Helpers.BuildCommandsText(temp);
+                    temp.Commands.Clear();
+
+                    if (DhcpManager.ShowCommandPreview)
+                    {
+                        var proceed = TerminalPreview.ShowTerminal(scriptText);
+                        if (!proceed)
+                            throw new OperationCanceledException("User cancelled command preview.");
+                    }
+
+                    var results = await InvokeScriptAsync(server ?? ".", scriptText, getCredentials).ConfigureAwait(false);
+                    // Ergebnis/Fehlerbehandlung ggf. ergänzen
+                }
+            });
+        }
+    }
+}

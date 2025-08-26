@@ -1,0 +1,510 @@
+// MainForm.Leases.cs
+// DIESE DATEI WIRD KOMPLETT ANGEZEIGT — EINFACH KOPIEREN & EINFÜGEN
+using System;
+using System.Data;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Management.Automation;
+using System.Drawing;
+
+namespace DhcpWmiViewer
+{
+    public partial class MainForm : Form
+    {
+        // WICHTIG: contextMenuLeases, dgvLeases etc. sind in MainForm.Controls.cs deklariert.
+        // Diese Datei darf KEINE Member definieren, die bereits anderswo deklariert sind.
+
+        // ------------------------
+        // CellMouseDown - right-click selection behaviour
+        // ------------------------
+        private void DgvLeases_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right && e.RowIndex >= 0)
+            {
+                try
+                {
+                    if (dgvLeases == null) return;
+                    dgvLeases.ClearSelection();
+                    dgvLeases.Rows[e.RowIndex].Selected = true;
+                    if (dgvLeases.Rows[e.RowIndex].Cells.Count > 0)
+                        dgvLeases.CurrentCell = dgvLeases.Rows[e.RowIndex].Cells[0];
+                }
+                catch { /* ignore UI errors */ }
+            }
+        }
+
+        // ------------------------
+        // Context menu opening (builds menu dynamically; uses existing contextMenuLeases from Controls partial)
+        // ------------------------
+        private void ContextMenuLeases_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            try
+            {
+                if (dgvLeases == null)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+
+                // Determine hit row (robust against different call sites)
+                var clientPos = dgvLeases.PointToClient(Cursor.Position);
+                var hit = dgvLeases.HitTest(clientPos.X, clientPos.Y);
+
+                if (hit.RowIndex < 0 || dgvLeases.SelectedRows.Count == 0)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+
+                var row = dgvLeases.SelectedRows[0];
+
+                // Try multiple column name variants to read AddressState (DataPropertyName is "AddressState")
+                string stateRaw = TryGetCellValue(row, "Col_AddressState", "AddressState") ?? string.Empty;
+                var state = stateRaw.Trim().ToLowerInvariant();
+
+                bool containsReservation = state.Contains("reservation");
+                bool containsActive = state.Contains("active");
+                bool containsLease = state.Contains("lease");
+
+                // contextMenuLeases exists in Controls partial; create fallback if null
+                if (contextMenuLeases == null) contextMenuLeases = new ContextMenuStrip();
+                contextMenuLeases.Items.Clear();
+
+                if (containsReservation)
+                {
+                    var miChange = new ToolStripMenuItem("Change reservation IP...");
+                    miChange.Click += async (s, args) => await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync").ConfigureAwait(false);
+                    contextMenuLeases.Items.Add(miChange);
+                }
+                else if (containsActive || containsLease)
+                {
+                    var miConvert = new ToolStripMenuItem("Create reservation from lease...");
+                    miConvert.Click += async (s, args) => await InvokeOptionalHandlerAsync("OnCreateReservationFromLeaseAsync").ConfigureAwait(false);
+                    contextMenuLeases.Items.Add(miConvert);
+                }
+                else
+                {
+                    var miChange = new ToolStripMenuItem("Change reservation IP...");
+                    miChange.Click += async (s, args) => await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync").ConfigureAwait(false);
+                    contextMenuLeases.Items.Add(miChange);
+                }
+
+                var hasSelection = dgvLeases.SelectedRows.Count > 0;
+                foreach (ToolStripItem item in contextMenuLeases.Items) item.Enabled = hasSelection;
+
+                // Show context menu at cursor
+                if (!e.Cancel && contextMenuLeases.Items.Count > 0)
+                {
+                    contextMenuLeases.Show(Cursor.Position);
+                }
+            }
+            catch
+            {
+                try { e.Cancel = true; } catch { }
+            }
+        }
+
+        // ------------------------
+        // Reflection-invoker: ruft optional benannte private Handler-Methoden auf (keine Exceptions nach außen)
+        // ------------------------
+        private async Task InvokeOptionalHandlerAsync(string methodName)
+        {
+            try
+            {
+                var mi = this.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+                if (mi != null)
+                {
+                    var ret = mi.Invoke(this, null);
+                    if (ret is Task t) await t;
+                    else if (ret is ValueTask vt) await vt.AsTask();
+                    return;
+                }
+
+                MessageBox.Show(this, $"Handler '{methodName}' ist nicht vorhanden.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Fehler beim Aufrufen von '{methodName}': {ex.Message}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ------------------------
+        // Create reservation from lease - flow (modal dialog, DhcpManager call, refresh)
+        // Keine zusätzlichen Fenster; stattdessen Status-Update + Auswahl der Reservation in dgvReservations.
+        // ------------------------
+        private async Task OnCreateReservationFromLeaseAsync()
+        {
+            try
+            {
+                if (dgvLeases == null || dgvLeases.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show(this, "Bitte zuerst eine Lease-Zeile auswählen.", "Keine Auswahl", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var leaseRow = dgvLeases.SelectedRows[0];
+                var (oldIp, clientId, hostName) = ReadLeaseRowValuesSafe(leaseRow);
+
+                if (string.IsNullOrWhiteSpace(oldIp))
+                {
+                    MessageBox.Show(this, "Die ausgewählte Zeile enthält keine IP-Adresse.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var scopeId = TryGetScopeIdFromSelection();
+                if (string.IsNullOrWhiteSpace(scopeId))
+                {
+                    MessageBox.Show(this, "Bitte zuerst einen Scope oben auswählen.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                string startRange = string.Empty, endRange = string.Empty, subnetMask = string.Empty;
+                try
+                {
+                    if (dgv != null && dgv.SelectedRows.Count > 0)
+                    {
+                        var srow = dgv.SelectedRows[0];
+                        startRange = srow.Cells["StartRange"]?.Value?.ToString() ?? string.Empty;
+                        endRange = srow.Cells["EndRange"]?.Value?.ToString() ?? string.Empty;
+                        subnetMask = srow.Cells["SubnetMask"]?.Value?.ToString() ?? string.Empty;
+                    }
+                }
+                catch { /* ignore */ }
+
+                var server = GetServerNameOrDefault();
+
+                string prefetchedDescription = string.Empty;
+                try
+                {
+                    var resTable = await DhcpManager.QueryReservationsAsync(server, scopeId, s => GetCredentialsForServer(s));
+                    if (resTable != null)
+                    {
+                        foreach (DataRow dr in resTable.Rows)
+                        {
+                            var ipVal = dr.Table.Columns.Contains("IPAddress") ? dr["IPAddress"]?.ToString() ?? string.Empty : string.Empty;
+                            if (string.Equals(ipVal, oldIp, StringComparison.OrdinalIgnoreCase))
+                            {
+                                prefetchedDescription = dr.Table.Columns.Contains("Description") ? dr["Description"]?.ToString() ?? string.Empty : string.Empty;
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch { /* ignore */ }
+
+                using var dlg = new ConvertLeaseToReservationDialog(
+                    scopeId,
+                    oldIp,
+                    clientId,
+                    hostName,
+                    startRange,
+                    endRange,
+                    subnetMask,
+                    // lookup callback
+                    async (sc) =>
+                    {
+                        try { return await DhcpManager.QueryReservationsAsync(server, sc, s => GetCredentialsForServer(s)).ConfigureAwait(false); }
+                        catch { return new DataTable(); }
+                    },
+                    // delete callback -> delegate to MainForm's ReservationDeleteForScopeAndIpAsync
+                    async (sc, ip) =>
+                    {
+                        try
+                        {
+                            var deleted = await ReservationDeleteForScopeAndIpAsync(sc, ip).ConfigureAwait(false);
+                            if (deleted)
+                            {
+                                try
+                                {
+                                    this.BeginInvoke(new Action(() =>
+                                    {
+                                        _ = TryInvokeRefreshReservations(sc);
+                                        _ = TryInvokeRefreshLeases(sc);
+                                    }));
+                                }
+                                catch { }
+                            }
+                            return deleted;
+                        }
+                        catch { return false; }
+                    }
+                );
+
+                // prefill description via reflection (best-effort)
+                if (!string.IsNullOrWhiteSpace(prefetchedDescription))
+                {
+                    try
+                    {
+                        var f = dlg.GetType().GetField("txtDescription", BindingFlags.Instance | BindingFlags.NonPublic);
+                        if (f != null)
+                        {
+                            var tb = f.GetValue(dlg) as TextBox;
+                            if (tb != null) tb.Text = prefetchedDescription;
+                        }
+                    }
+                    catch { /* ignore */ }
+                }
+
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+                var chosenIp = dlg.IpAddress?.Trim() ?? oldIp;
+                var chosenClientId = dlg.ClientId?.Trim() ?? clientId;
+                var chosenName = dlg.Name ?? hostName;
+                var chosenDescription = dlg.Description ?? prefetchedDescription ?? string.Empty;
+
+                var confirm = MessageBox.Show(this,
+                    $"Reservation erstellen:\n\nScope: {scopeId}\nClientId: {chosenClientId}\nIP: {chosenIp}\nName: {chosenName}\n\nFortfahren?",
+                    "Bestätigen",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (confirm != DialogResult.Yes) return;
+
+                try
+                {
+                    this.Enabled = false;
+                    var serverToUse = GetServerNameOrDefault();
+
+                    var created = false;
+                    try
+                    {
+                        var maybe = DhcpManager.CreateReservationFromLeaseAsync(serverToUse, scopeId, chosenIp, chosenClientId, chosenName, chosenDescription, s => GetCredentialsForServer(s));
+                        if (maybe is Task t) { await t.ConfigureAwait(false); created = true; }
+                    }
+                    catch
+                    {
+                        created = await TryInvokeDhcpManagerBoolMethodAsync(
+                            "CreateReservationFromLeaseAsync",
+                            serverToUse, scopeId, chosenIp, chosenClientId, chosenName, chosenDescription, new Func<string, PSCredential?>(GetCredentialsForServer)
+                        ).ConfigureAwait(false);
+                    }
+
+                    if (!created)
+                    {
+                        MessageBox.Show(this, "Reservation konnte nicht erstellt werden (DhcpManager-Methode fehlgeschlagen).", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // Kein Fenster: Status aktualisieren und die neue Reservation in dgvReservations auswählen (wenn sichtbar)
+                    UpdateStatus($"Reservation in {scopeId} für {chosenIp} erstellt.");
+                    
+                    // Refresh und dann selektieren (best-effort)
+                    await TryInvokeRefreshReservations(scopeId);
+                    await TryInvokeRefreshLeases(scopeId);
+
+                    // Versuche, die neue Reservation in dgvReservations auszuwählen (falls vorhanden)
+                    try
+                    {
+                        SelectReservationRowByIp(chosenIp);
+                    }
+                    catch { /* swallow selection errors */ }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Fehler beim Erstellen der Reservation:\n" + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally { this.Enabled = true; }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Unerwarteter Fehler: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ------------------------
+        // Selectiert in dgvReservations die Zeile mit gegebener IP (best-effort, UI-Thread)
+        // ------------------------
+        private void SelectReservationRowByIp(string ip)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ip)) return;
+                if (dgvReservations == null) return;
+
+                this.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        dgvReservations.ClearSelection();
+                        for (int i = 0; i < dgvReservations.Rows.Count; i++)
+                        {
+                            var row = dgvReservations.Rows[i];
+                            string? cellVal = null;
+
+                            // Versuche verschiedene Spaltennamen / DataPropertyName-Varianten
+                            if (dgvReservations.Columns.Contains("IPAddress"))
+                            {
+                                var c = dgvReservations.Columns["IPAddress"];
+                                if (c != null)
+                                {
+                                    var v = row.Cells[c.Index].Value;
+                                    if (v != null) cellVal = v.ToString();
+                                }
+                            }
+
+                            if (string.IsNullOrWhiteSpace(cellVal))
+                            {
+                                // Fallback: durch alle Zellen suchen und DataPropertyName abgleichen
+                                foreach (DataGridViewCell c in row.Cells)
+                                {
+                                    try
+                                    {
+                                        var dp = c.OwningColumn?.DataPropertyName;
+                                        if (!string.IsNullOrWhiteSpace(dp) && string.Equals(dp, "IPAddress", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            if (c.Value != null) cellVal = c.Value.ToString();
+                                            break;
+                                        }
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(cellVal) && string.Equals(cellVal.Trim(), ip.Trim(), StringComparison.OrdinalIgnoreCase))
+                            {
+                                row.Selected = true;
+                                try
+                                {
+                                    dgvReservations.FirstDisplayedScrollingRowIndex = Math.Max(0, i - 2);
+                                }
+                                catch { /* some layouts might not support setting FirstDisplayedScrolledIndex */ }
+                                // Set focus so user sees selection
+                                try { dgvReservations.CurrentCell = row.Cells[0]; } catch { }
+                                break;
+                            }
+                        }
+                    }
+                    catch { /* swallow UI selection errors */ }
+                }));
+            }
+            catch { /* swallow */ }
+        }
+
+        // ------------------------
+        // Safe read helper for lease row values
+        // ------------------------
+        private (string Ip, string ClientId, string HostName) ReadLeaseRowValuesSafe(DataGridViewRow row)
+        {
+            try
+            {
+                var ip = TryGetCellValue(row, "Col_IPAddress", "IPAddress") ?? string.Empty;
+                var clientId = TryGetCellValue(row, "Col_ClientId", "ClientId") ?? string.Empty;
+                var hostName = TryGetCellValue(row, "Col_HostName", "HostName") ?? string.Empty;
+                return (ip, clientId, hostName);
+            }
+            catch { return (string.Empty, string.Empty, string.Empty); }
+        }
+
+        // ------------------------
+        // Helper: try multiple column names to get a cell value
+        // ------------------------
+        private string? TryGetCellValue(DataGridViewRow row, params string[] possibleNames)
+        {
+            try
+            {
+                // Prefer column name lookup via the owning DataGridView to get a column index
+                var dgv = row?.DataGridView;
+                if (dgv != null)
+                {
+                    foreach (var name in possibleNames)
+                    {
+                        if (dgv.Columns.Contains(name))
+                        {
+                            var col = dgv.Columns[name];
+                            if (col != null)
+                            {
+                                var idx = col.Index;
+                                var val = row.Cells[idx]?.Value;
+                                if (val != null) return val.ToString();
+                            }
+                        }
+                    }
+                }
+
+                // fallback: search by DataPropertyName match on the row's cells
+                foreach (DataGridViewCell c in row.Cells)
+                {
+                    try
+                    {
+                        if (c.OwningColumn != null && possibleNames.Any(n => string.Equals(c.OwningColumn.DataPropertyName, n, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            if (c.Value != null) return c.Value.ToString();
+                        }
+                    }
+                    catch { /* ignore per-cell errors */ }
+                }
+            }
+            catch { /* ignore */ }
+            return null;
+        }
+
+        // ------------------------
+        // Versuche, DhcpManager-Methoden die bool zurückgeben per Reflection aufzurufen.
+        // ------------------------
+        private async Task<bool> TryInvokeDhcpManagerBoolMethodAsync(string methodName, params object[] args)
+        {
+            try
+            {
+                var dmType = typeof(DhcpManager);
+                var methods = dmType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Where(m => string.Equals(m.Name, methodName, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                if (methods.Length == 0) return false;
+
+                foreach (var mi in methods)
+                {
+                    var pars = mi.GetParameters();
+                    try
+                    {
+                        object? invokeResult = null;
+
+                        // Try to match common signatures via parameter count/types; last param may be Func<string,PSCredential?>
+                        if (pars.Length == args.Length)
+                        {
+                            // Try direct invoke (best-effort)
+                            invokeResult = mi.Invoke(null, args);
+                        }
+                        else
+                        {
+                            // Try building an overload with credential func if expected
+                            var argList = args.ToList();
+                            if (pars.Length == args.Length + 1 && typeof(Delegate).IsAssignableFrom(pars[pars.Length - 1].ParameterType))
+                            {
+                                argList.Add(new Func<string, PSCredential?>(GetCredentialsForServer));
+                                invokeResult = mi.Invoke(null, argList.ToArray());
+                            }
+                        }
+
+                        if (invokeResult == null) continue;
+
+                        if (invokeResult is Task<bool> tBool)
+                        {
+                            return await tBool.ConfigureAwait(false);
+                        }
+                        else if (invokeResult is Task t)
+                        {
+                            await t.ConfigureAwait(false);
+                            var resProp = invokeResult.GetType().GetProperty("Result");
+                            if (resProp != null)
+                            {
+                                var val = resProp.GetValue(invokeResult);
+                                if (val is bool b) return b;
+                            }
+                            return true;
+                        }
+                        else if (invokeResult is bool b) return b;
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+    }
+}

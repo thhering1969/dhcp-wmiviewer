@@ -1,0 +1,14 @@
+// MainForm.ContextMenus.cs
+
+using System.Windows.Forms;
+
+namespace DhcpWmiViewer
+{
+    // Minimaler Stub - vermeidet doppelte Implementierungen
+    public partial class MainForm
+    {
+        // Diese Datei enthält bewusst keine Implementierung von
+        // SetupReservationsContextMenu oder DeleteSelectedReservationAsync,
+        // damit die Implementierung ausschließlich in MainForm.ReservationsHandlers.cs liegt.
+    }
+}

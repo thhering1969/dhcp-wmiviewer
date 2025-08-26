@@ -1,0 +1,1 @@
+﻿dotnet run failed to start: Die Eigenschaft "HasExited" wurde für dieses Objekt nicht gefunden. Vergewissern Sie sich, dass die Eigenschaft vorhanden ist.

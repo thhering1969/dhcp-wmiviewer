@@ -1,0 +1,27 @@
+﻿// MainForm.Leases.cs
+// DIESE DATEI WIRD KOMPLETT ANGEZEIGT â€” EINFACH KOPIEREN & EINFÃœGEN
+using System;
+using System.Data;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Management.Automation;
+using System.Drawing;
+
+namespace DhcpWmiViewer
+{
+    public partial class MainForm : Form
+    {
+        // WICHTIG: contextMenuLeases, dgvLeases etc. sind in MainForm.Controls.cs deklariert.
+        // Diese Datei darf KEINE Member definieren, die bereits anderswo deklariert sind.
+
+        // ------------------------
+        // CellMouseDown - right-click selection behaviour
+        // ------------------------
+        
+
+
+// --- Auto-appended 2 closing brace(s) to fix unmatched { ---
+}}
+
