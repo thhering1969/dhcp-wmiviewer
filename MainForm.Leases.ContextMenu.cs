@@ -55,16 +55,16 @@ namespace DhcpWmiViewer
                 if (containsReservation)
                 {
                     var miChange = new ToolStripMenuItem("Change reservation IP...");
-                    // Wichtig: kein ConfigureAwait(false) in Click-Lambda verwenden
+                    // Direktaufruf der impliziten Methode (keine Reflection)
                     miChange.Click += async (s, args) =>
                     {
                         try
                         {
-                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync");
+                            await OnChangeReservationFromLeaseRowAsync().ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
-                            try { MessageBox.Show(this, "Fehler im Click-Handler: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                            try { MessageBox.Show(this, "Fehler beim Aufruf von OnChangeReservationFromLeaseRowAsync: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
                         }
                     };
                     contextMenuLeases.Items.Add(miChange);
@@ -72,16 +72,16 @@ namespace DhcpWmiViewer
                 else if (containsActive || containsLease)
                 {
                     var miConvert = new ToolStripMenuItem("Create reservation from lease...");
-                    // Wichtig: kein ConfigureAwait(false) in Click-Lambda verwenden
+                    // Direktaufruf der impliziten Methode (keine Reflection)
                     miConvert.Click += async (s, args) =>
                     {
                         try
                         {
-                            await InvokeOptionalHandlerAsync("OnCreateReservationFromLeaseAsync");
+                            await OnCreateReservationFromLeaseAsync().ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
-                            try { MessageBox.Show(this, "Fehler im Click-Handler: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                            try { MessageBox.Show(this, "Fehler beim Aufruf von OnCreateReservationFromLeaseAsync: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
                         }
                     };
                     contextMenuLeases.Items.Add(miConvert);
@@ -93,11 +93,11 @@ namespace DhcpWmiViewer
                     {
                         try
                         {
-                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync");
+                            await OnChangeReservationFromLeaseRowAsync().ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
-                            try { MessageBox.Show(this, "Fehler im Click-Handler: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                            try { MessageBox.Show(this, "Fehler beim Aufruf von OnChangeReservationFromLeaseRowAsync: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
                         }
                     };
                     contextMenuLeases.Items.Add(miChange);
