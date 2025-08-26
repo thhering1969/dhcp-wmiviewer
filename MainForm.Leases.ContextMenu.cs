@@ -55,12 +55,12 @@ namespace DhcpWmiViewer
                 if (containsReservation)
                 {
                     var miChange = new ToolStripMenuItem("Change reservation IP...");
-                    // Direktaufruf der impliziten Methode (keine Reflection)
+                    // Reflection path: robust gegenüber fehlender Methode (vermeidet Compile-Error)
                     miChange.Click += async (s, args) =>
                     {
                         try
                         {
-                            await OnChangeReservationFromLeaseRowAsync().ConfigureAwait(false);
+                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync").ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -72,7 +72,7 @@ namespace DhcpWmiViewer
                 else if (containsActive || containsLease)
                 {
                     var miConvert = new ToolStripMenuItem("Create reservation from lease...");
-                    // Direktaufruf der impliziten Methode (keine Reflection)
+                    // Direkter Aufruf: erwartet, dass OnCreateReservationFromLeaseAsync existiert
                     miConvert.Click += async (s, args) =>
                     {
                         try
@@ -93,7 +93,7 @@ namespace DhcpWmiViewer
                     {
                         try
                         {
-                            await OnChangeReservationFromLeaseRowAsync().ConfigureAwait(false);
+                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync").ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
