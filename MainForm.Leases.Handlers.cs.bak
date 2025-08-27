@@ -89,7 +89,7 @@ namespace DhcpWmiViewer
                         }
 
                         // Entscheide: übergeben wir einen Credential-Callback oder null?
-                        Func<string, PSCredential?>? credFactoryOrNull = null;
+                        Func<string, PSCredential>? credFactoryOrNull = null;
                         try
                         {
                             // Prüfe, ob GetCredentialsForServer für den konkreten Zielserver tatsächlich eine PSCredential liefert
@@ -423,7 +423,7 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Reflection-based invoker for DhcpManager.CreateReservationFromLeaseAsync that tries several overloads.
         /// </summary>
-        private async Task InvokeCreateReservationFromLeaseReflectionAsync_Local(string server, string scopeId, string oldIp, string newIp, string newClient, string newName, string newDesc, Func<string, PSCredential?> credFactory)
+        private async Task InvokeCreateReservationFromLeaseReflectionAsync_Local(string server, string scopeId, string oldIp, string newIp, string newClient, string newName, string newDesc, Func<string, PSCredential> credFactory)
         {
             var dmType = typeof(DhcpManager);
             var methods = dmType.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)
@@ -467,7 +467,7 @@ namespace DhcpWmiViewer
                         {
                             if (!pType.IsAssignableFrom(arg.GetType()))
                             {
-                                if (i == ps.Length - 1 && arg is Func<string, PSCredential?> && typeof(Delegate).IsAssignableFrom(pType))
+                                if (i == ps.Length - 1 && arg is Func<string, PSCredential> && typeof(Delegate).IsAssignableFrom(pType))
                                 {
                                     ok = true; // allow delegate coercion later
                                 }

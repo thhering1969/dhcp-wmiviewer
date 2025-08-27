@@ -1,9 +1,14 @@
-﻿// MainForm.Leases.Helpers.cs
+// MainForm.Leases.Helpers.cs
+// **KOMPLETTE DATEI** — ersetzt die vorhandene Helper-Partial komplett.
+// Diese Version verwendet Debug.WriteLine anstelle von Debug-MessageBoxes,
+// damit Debug-Informationen im Output landen, aber keine störenden Popups erscheinen.
+
 using System;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Diagnostics;
 
 namespace DhcpWmiViewer
 {
@@ -11,9 +16,7 @@ namespace DhcpWmiViewer
     {
         /// <summary>
         /// Sucht in der gegebenen Row nach einer Zelle, deren Spalte einen der angegebenen Namen hat.
-        /// Als Namen werden versucht: Column.Name, Column.DataPropertyName, Column.HeaderText (in dieser Reihenfolge).
         /// Liefert den Wert als string zurück oder null, falls nicht gefunden / leer.
-        /// Diese Implementierung vermeidet problematische string-Indexer auf DataGridViewRow.Cells.
         /// </summary>
         protected string? TryGetCellValue(DataGridViewRow? row, params string[] names)
         {
@@ -21,7 +24,6 @@ namespace DhcpWmiViewer
             {
                 if (row == null || names == null || names.Length == 0) return null;
 
-                // Versuche zuerst die DataGridView-Referenz (falls vorhanden) für schnellen Lookup
                 var grid = row.DataGridView;
 
                 foreach (var name in names)
@@ -29,7 +31,6 @@ namespace DhcpWmiViewer
                     if (string.IsNullOrWhiteSpace(name)) continue;
                     int colIdx = -1;
 
-                    // 1) Wenn das globale dgvLeases bekannt ist, versuche direkt über dessen Columns (Name)
                     if (dgvLeases != null)
                     {
                         var colByName = dgvLeases.Columns.Cast<DataGridViewColumn>()
@@ -37,7 +38,6 @@ namespace DhcpWmiViewer
                         if (colByName != null) colIdx = colByName.Index;
                     }
 
-                    // 2) Falls noch nicht gefunden, nutze die Columns-Sammlung der Row.DataGridView (falls vorhanden)
                     if (colIdx < 0 && grid != null)
                     {
                         var col = grid.Columns.Cast<DataGridViewColumn>()
@@ -48,7 +48,6 @@ namespace DhcpWmiViewer
                         if (col != null) colIdx = col.Index;
                     }
 
-                    // 3) Falls wir eine sinnvolle Index gefunden haben, hole die Zelle und ihren Wert
                     if (colIdx >= 0 && colIdx < row.Cells.Count)
                     {
                         var cell = row.Cells[colIdx];
@@ -59,7 +58,6 @@ namespace DhcpWmiViewer
                         }
                     }
 
-                    // 4) Fallback: suche alle Zellen in der Row und vergleiche OwningColumn-Infos (defensiv)
                     for (int i = 0; i < row.Cells.Count; i++)
                     {
                         try
@@ -110,8 +108,7 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Versucht, eine benannte private/protected async/sync Methode auf diesem Form-Objekt per Reflection aufzurufen,
         /// falls vorhanden. Die Methode darf entweder Task zurückgeben oder void. Parameterlos.
-        /// Fehler werden gefangen und geschluckt (GUI-robustheit).
-        /// WICHTIG: await des Task ohne ConfigureAwait(false) damit UI-Fortsetzungen wieder auf UI-Thread laufen.
+        /// Fehler werden nicht als Debug-MessageBox angezeigt (Debug.WriteLine stattdessen).
         /// </summary>
         protected async Task InvokeOptionalHandlerAsync(string methodName)
         {
@@ -123,7 +120,7 @@ namespace DhcpWmiViewer
                 var mi = this.GetType().GetMethod(methodName, flags, null, Type.EmptyTypes, null);
                 if (mi == null)
                 {
-                    try { MessageBox.Show(this, $"Handler '{methodName}' nicht gefunden (Reflection).", "DEBUG: Handler fehlt", MessageBoxButtons.OK, MessageBoxIcon.Warning); } catch { }
+                    Debug.WriteLine($"Handler '{methodName}' nicht gefunden (Reflection).");
                     return;
                 }
 
@@ -135,12 +132,12 @@ namespace DhcpWmiViewer
                 catch (TargetInvocationException tie)
                 {
                     var inner = tie.InnerException ?? tie;
-                    try { MessageBox.Show(this, $"Handler '{methodName}' löste eine Ausnahme aus:\n{inner}", "DEBUG: Handler-Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                    Debug.WriteLine($"Handler '{methodName}' löste eine Ausnahme aus: {inner}");
                     return;
                 }
                 catch (Exception exInvoke)
                 {
-                    try { MessageBox.Show(this, $"Invoke fehlgeschlagen: {exInvoke}", "DEBUG: Invoke-Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                    Debug.WriteLine($"Invoke fehlgeschlagen: {exInvoke}");
                     return;
                 }
 
@@ -148,16 +145,15 @@ namespace DhcpWmiViewer
                 {
                     try
                     {
-                        // WICHTIG: hier kein ConfigureAwait(false) — wir wollen UI-Fortsetzungen wieder auf UI-Thread
+                        // await so that UI-continuation runs on UI thread
                         await t;
                     }
                     catch (Exception exAwait)
                     {
                         try
                         {
-                            this.BeginInvoke(new Action(() =>
-                                MessageBox.Show(this, $"Handler '{methodName}' warf während await eine Ausnahme:\n{exAwait}", "DEBUG: Handler-Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error)
-                            ));
+                            // log instead of showing a debug popup
+                            Debug.WriteLine($"Handler '{methodName}' warf während await eine Ausnahme: {exAwait}");
                         }
                         catch { /* ignore */ }
                     }
@@ -165,7 +161,7 @@ namespace DhcpWmiViewer
             }
             catch (Exception ex)
             {
-                try { MessageBox.Show(this, $"InvokeOptionalHandlerAsync: {ex}", "DEBUG: Reflection Error", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                Debug.WriteLine($"InvokeOptionalHandlerAsync: {ex}");
             }
         }
     }

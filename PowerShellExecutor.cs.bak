@@ -48,7 +48,7 @@ namespace DhcpWmiViewer
         /// Wichtig: Führt lokal nur aus, wenn die App auf einem DHCP-Server läuft.
         /// Ansonsten wird per Invoke-Command (WinRM) gegen den Zielhost gearbeitet.
         /// </summary>
-        public static Task<Collection<PSObject>> InvokeScriptAsync(string server, string script, Func<string, PSCredential?>? getCredentials = null)
+        public static Task<Collection<PSObject>> InvokeScriptAsync(string server, string script, Func<string, PSCredential>? getCredentials = null)
         {
             return Task.Run(() =>
             {
@@ -238,7 +238,7 @@ namespace DhcpWmiViewer
         /// </summary>
         public static async Task<DataTable> ExecutePowerShellQueryAsync(
             string server,
-            Func<string, PSCredential?> getCredentials,
+            Func<string, PSCredential> getCredentials,
             Action<PowerShell> buildPs,
             Action<DataTable> ensureSchema,
             bool isDynamic = false)
@@ -323,7 +323,7 @@ namespace DhcpWmiViewer
         /// Führt eine PowerShell-Action (Add/Remove/Set) aus. buildAction konfiguriert die PowerShell-Instanz.
         /// Das Script wird remote ausgeführt (oder lokal, falls IsLocalDhcpServer() true und target lokal ist).
         /// </summary>
-        public static Task ExecutePowerShellActionAsync(string server, Func<string, PSCredential?> getCredentials, Action<PowerShell> buildAction)
+        public static Task ExecutePowerShellActionAsync(string server, Func<string, PSCredential> getCredentials, Action<PowerShell> buildAction)
         {
             return Task.Run(async () =>
             {

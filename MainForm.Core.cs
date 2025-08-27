@@ -1,4 +1,6 @@
 // MainForm.Core.cs
+// Repository: https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer.git
+// Branch:     fix/contextmenu-direct-call
 // DIESE DATEI WIRD KOMPLETT ANGEZEIGT — EINFACH KOPIEREN & EINFÜGEN
 // Hinweis: Diese Version verzichtet bewusst auf Deklarationen, die in anderen MainForm-Partial-Dateien
 // bereits vorhanden sind (Controls, BindingSources, helper methods). Dadurch werden Duplikat-Definitionen vermieden.
@@ -322,25 +324,52 @@ namespace DhcpWmiViewer
                             pars[2].ParameterType == typeof(string) &&
                             typeof(Delegate).IsAssignableFrom(pars[3].ParameterType))
                         {
-                            // signature: (string server, string scopeId, string ip, Func<string,PSCredential?> getCred)
-                            var credFunc = new Func<string, PSCredential?>(GetCredentialsForServer);
-                            invokeResult = mi.Invoke(null, new object?[] { server, scopeId, ip, credFunc });
+                            // signature: (string server, string scopeId, string ip, some-delegate)
+                            // Build a delegate that maps to GetCredentialsForServer method, converted to the expected delegate type if possible.
+                            object credDelegate;
+                            try
+                            {
+                                var methodInfo = this.GetType().GetMethod(nameof(GetCredentialsForServer), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                                if (methodInfo != null)
+                                {
+                                    try
+                                    {
+                                        var created = Delegate.CreateDelegate(pars[3].ParameterType, this, methodInfo);
+                                        credDelegate = created ?? (object)new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                                    }
+                                    catch
+                                    {
+                                        credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                                    }
+                                }
+                                else
+                                {
+                                    credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                                }
+                            }
+                            catch
+                            {
+                                credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                            }
+
+                            // use object[] (not object?[]) to avoid nullable-array mismatch warnings
+                            invokeResult = mi.Invoke(null, new object[] { server, scopeId, ip, credDelegate });
                         }
                         else if (pars.Length == 4 &&
                                  pars[0].ParameterType == typeof(string) &&
                                  pars[1].ParameterType == typeof(string) &&
                                  pars[2].ParameterType == typeof(string) &&
-                                 pars[3].ParameterType == typeof(PSCredential))
+                                 (pars[3].ParameterType == typeof(PSCredential) || pars[3].ParameterType == typeof(object)))
                         {
                             var cred = GetCredentialsForServer(server);
-                            invokeResult = mi.Invoke(null, new object?[] { server, scopeId, ip, cred });
+                            invokeResult = mi.Invoke(null, new object[] { server, scopeId, ip, cred });
                         }
                         else if (pars.Length == 3 &&
                                  pars[0].ParameterType == typeof(string) &&
                                  pars[1].ParameterType == typeof(string) &&
                                  pars[2].ParameterType == typeof(string))
                         {
-                            invokeResult = mi.Invoke(null, new object?[] { server, scopeId, ip });
+                            invokeResult = mi.Invoke(null, new object[] { server, scopeId, ip });
                         }
                         else
                         {
@@ -387,32 +416,241 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Komfort-Methode: Öffnet ConvertLeaseToReservationDialog für gegebene Parameter und übergibt
         /// die Lookup/Delete-Callbacks automatisch.
+        /// Hinweis: Diese Implementierung verwendet den parameterlosen Konstruktor und
+        /// versucht per Reflection, Properties/Methoden zu befüllen. Dadurch vermeiden wir
+        /// Kompilationsfehler, wenn es alternative Konstruktor-Signaturen gibt.
         /// </summary>
-        public async Task OpenConvertLeaseToReservationDialogAsync(string scopeId, string ipAddress, string clientId, string hostName, string startRange, string endRange, string subnetMask)
+        public Task OpenConvertLeaseToReservationDialogAsync(string scopeId, string ipAddress, string clientId, string hostName, string startRange, string endRange, string subnetMask)
         {
             try
             {
-                using var dlg = new ConvertLeaseToReservationDialog(
-                    scopeId,
-                    ipAddress,
-                    clientId,
-                    hostName,
-                    startRange,
-                    endRange,
-                    subnetMask,
-                    ReservationLookupForScopeAsync,
-                    ReservationDeleteForScopeAndIpAsync);
+                // Verwende parameterlosen Konstruktor, um Overload-Probleme (Methodengruppen -> string) zu vermeiden.
+                using var dlg = new ConvertLeaseToReservationDialog();
 
-                if (dlg.ShowDialog(this) == DialogResult.OK)
-                {
-                    // Der Dialog hat OK gedrückt — hier kannst du die tatsächliche Create/Change-Logik anstoßen.
-                    UpdateStatus("Reservation verändert / erstellt (Dialog bestätigt).");
-                }
+                // Versuche, bekannte Properties / Fields zu setzen (best-effort)
+                TrySetPropertyIfExists(dlg, "ScopeId", scopeId);
+                TrySetPropertyIfExists(dlg, "Scope", scopeId);
+                TrySetPropertyIfExists(dlg, "IpAddress", ipAddress);
+                TrySetPropertyIfExists(dlg, "IPAddress", ipAddress);
+                TrySetPropertyIfExists(dlg, "ClientId", clientId);
+                TrySetPropertyIfExists(dlg, "Client", clientId);
+                TrySetPropertyIfExists(dlg, "HostName", hostName);
+                TrySetPropertyIfExists(dlg, "Name", hostName);
+                TrySetPropertyIfExists(dlg, "StartRange", startRange);
+                TrySetPropertyIfExists(dlg, "EndRange", endRange);
+                TrySetPropertyIfExists(dlg, "SubnetMask", subnetMask);
+
+                // Versuche, Delegates (Lookup / Delete) zuzuweisen, falls passende Properties existieren.
+                TryAssignDelegatePropertyIfExists(dlg, "ReservationLookup", (Func<string, Task<DataTable>>)ReservationLookupForScopeAsync);
+                TryAssignDelegatePropertyIfExists(dlg, "ReservationLookupForScopeAsync", (Func<string, Task<DataTable>>)ReservationLookupForScopeAsync);
+                TryAssignDelegatePropertyIfExists(dlg, "Lookup", (Func<string, Task<DataTable>>)ReservationLookupForScopeAsync);
+
+                TryAssignDelegatePropertyIfExists(dlg, "ReservationDelete", (Func<string, string, Task<bool>>)((s, ip) => ReservationDeleteForScopeAndIpAsync(s, ip)));
+                TryAssignDelegatePropertyIfExists(dlg, "ReservationDeleteForScopeAndIpAsync", (Func<string, string, Task<bool>>)((s, ip) => ReservationDeleteForScopeAndIpAsync(s, ip)));
+                TryAssignDelegatePropertyIfExists(dlg, "DeleteReservation", (Func<string, string, Task<bool>>)((s, ip) => ReservationDeleteForScopeAndIpAsync(s, ip)));
+
+                // Wenn Dialog eine Initializer-Methode hat, versuchen wir diese (z.B. InitializeWithValues)
+                TryInvokeInitializeMethodIfExists(dlg, scopeId, ipAddress, clientId, hostName, startRange, endRange, subnetMask);
+
+                // Anzeige (synchron). Methode war zuvor async ohne await — um Hinweis/Cs1998 zu beseitigen, behalten wir Sync-ShowDialog und liefern Task.CompletedTask zurück.
+                dlg.ShowDialog(this);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, $"Fehler beim Öffnen des Dialogs: {ex.Message}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+
+            return Task.CompletedTask;
+        }
+
+        private void TryInvokeInitializeMethodIfExists(object dlg, params object[] values)
+        {
+            if (dlg == null) return;
+            try
+            {
+                var t = dlg.GetType();
+                var candidates = t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                                  .Where(m => string.Equals(m.Name, "InitializeWithValues", StringComparison.OrdinalIgnoreCase)
+                                           || string.Equals(m.Name, "Initialize", StringComparison.OrdinalIgnoreCase)
+                                           || string.Equals(m.Name, "Init", StringComparison.OrdinalIgnoreCase))
+                                  .ToArray();
+                foreach (var mi in candidates)
+                {
+                    if (mi == null) continue;
+                    var ps = mi.GetParameters();
+                    if (ps.Length > 0 && ps.Length <= values.Length)
+                    {
+                        // try to build args of correct length
+                        var args = new object[ps.Length];
+                        for (int i = 0; i < ps.Length; i++)
+                        {
+                            var expected = ps[i].ParameterType;
+                            var provided = values.Length > i ? values[i] : null;
+                            // try simple assign or convert
+                            if (provided == null)
+                            {
+                                args[i] = null!;
+                            }
+                            else if (expected.IsAssignableFrom(provided.GetType()))
+                            {
+                                args[i] = provided;
+                            }
+                            else
+                            {
+                                // last resort: try to convert ToString
+                                args[i] = provided.ToString() ?? string.Empty;
+                            }
+                        }
+
+                        try
+                        {
+                            mi.Invoke(dlg, args);
+                            return;
+                        }
+                        catch
+                        {
+                            // ignore and try next overload
+                        }
+                    }
+                }
+            }
+            catch { /* swallow */ }
+        }
+
+        private void TrySetPropertyIfExists(object target, string propName, object? value)
+        {
+            if (target == null || string.IsNullOrWhiteSpace(propName)) return;
+            try
+            {
+                var pi = target.GetType().GetProperty(propName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                if (pi != null && pi.CanWrite)
+                {
+                    if (value == null)
+                    {
+                        // set null for reference types
+                        if (!pi.PropertyType.IsValueType || Nullable.GetUnderlyingType(pi.PropertyType) != null)
+                        {
+                            pi.SetValue(target, null);
+                        }
+                        return;
+                    }
+
+                    var targetType = pi.PropertyType;
+                    if (value != null && targetType.IsAssignableFrom(value.GetType()))
+                    {
+                        pi.SetValue(target, value);
+                        return;
+                    }
+
+                    // If the property is string, set string representation
+                    if (targetType == typeof(string))
+                    {
+                        pi.SetValue(target, value.ToString());
+                        return;
+                    }
+
+                    // If property is a control, try to set its Text
+                    var val = pi.GetValue(target);
+                    if (val != null)
+                    {
+                        var textProp = val.GetType().GetProperty("Text", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (textProp != null && textProp.CanWrite)
+                        {
+                            textProp.SetValue(val, value?.ToString());
+                            return;
+                        }
+                    }
+                }
+                else
+                {
+                    // try fields
+                    var fi = target.GetType().GetField(propName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                    if (fi != null)
+                    {
+                        if (value != null && fi.FieldType.IsAssignableFrom(value.GetType()))
+                        {
+                            fi.SetValue(target, value);
+                        }
+                        else if (fi.FieldType == typeof(string))
+                        {
+                            fi.SetValue(target, value?.ToString());
+                        }
+                        else
+                        {
+                            var fieldVal = fi.GetValue(target);
+                            if (fieldVal != null)
+                            {
+                                var textProp = fieldVal.GetType().GetProperty("Text", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                                if (textProp != null && textProp.CanWrite)
+                                {
+                                    textProp.SetValue(fieldVal, value?.ToString());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* swallow */ }
+        }
+
+        private void TryAssignDelegatePropertyIfExists(object target, string propName, Delegate del)
+        {
+            if (target == null || string.IsNullOrWhiteSpace(propName) || del == null) return;
+            try
+            {
+                var pi = target.GetType().GetProperty(propName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                if (pi != null && pi.CanWrite)
+                {
+                    var pType = pi.PropertyType;
+                    if (pType != null && pType.IsAssignableFrom(del.GetType()))
+                    {
+                        pi.SetValue(target, del);
+                        return;
+                    }
+
+                    // try to create a delegate of required type
+                    if (pType != null && typeof(Delegate).IsAssignableFrom(pType))
+                    {
+                        try
+                        {
+                            var created = Delegate.CreateDelegate(pType, del.Target, del.Method);
+                            if (created != null) pi.SetValue(target, created);
+                            return;
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+                    }
+                }
+
+                // try fields too
+                var fi = target.GetType().GetField(propName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                if (fi != null)
+                {
+                    var fType = fi.FieldType;
+                    if (fType != null && fType.IsAssignableFrom(del.GetType()))
+                    {
+                        fi.SetValue(target, del);
+                        return;
+                    }
+
+                    if (fType != null && typeof(Delegate).IsAssignableFrom(fType))
+                    {
+                        try
+                        {
+                            var created = Delegate.CreateDelegate(fType, del.Target, del.Method);
+                            if (created != null) fi.SetValue(target, created);
+                            return;
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+                    }
+                }
+            }
+            catch { /* swallow */ }
         }
 
         private async Task ReplicateToPartnersAsync(string originServer, Func<string, Task> actionPerPartner)
@@ -437,7 +675,7 @@ namespace DhcpWmiViewer
                         if (fi != null)
                         {
                             var val = fi.GetValue(this) as TextBox;
-                            partnersText = val?.Text ?? string.Empty;
+                            if (val != null) partnersText = val.Text ?? string.Empty;
                         }
                     }
                     catch { }

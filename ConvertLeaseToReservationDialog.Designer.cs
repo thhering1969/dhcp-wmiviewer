@@ -1,4 +1,5 @@
 // ConvertLeaseToReservationDialog.Designer.cs
+// COMPLETE FILE — einfach kopieren & einfügen
 
 using System.Drawing;
 using System.Windows.Forms;
@@ -55,22 +56,41 @@ namespace DhcpWmiViewer
             this.Text = "Convert Lease / Edit Reservation";
             this.Padding = new Padding(8);
 
-            // bottom buttons (keine Clipping-Probleme)
+            // --- Bottom area: right-aligned buttons (Cancel | OK) with robust layout ---
             var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 80, Padding = new Padding(6) };
-            var bottomTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
-            bottomTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            bottomTable.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            var buttonFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Anchor = AnchorStyles.Right | AnchorStyles.Bottom };
 
-            btnOk = new Button { Text = "OK", AutoSize = true, Padding = new Padding(8), Margin = new Padding(6) };
+            // Right-docked FlowPanel to ensure buttons remain visible on the right
+            var rightButtons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Right,
+                FlowDirection = FlowDirection.LeftToRight, // Cancel then OK (OK will be rightmost)
+                AutoSize = true,
+                WrapContents = false,
+                Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
+                Padding = new Padding(0),
+                Margin = new Padding(0)
+            };
+
+            // Create buttons
             btnCancel = new Button { Text = "Abbrechen", AutoSize = true, Padding = new Padding(8), Margin = new Padding(6) };
+            btnOk = new Button { Text = "OK", AutoSize = true, Padding = new Padding(8), Margin = new Padding(6) };
 
-            buttonFlow.Controls.Add(btnOk);
-            buttonFlow.Controls.Add(btnCancel);
+            // Wire click handlers robustly (set DialogResult and Close)
+            btnCancel.Click += (s, e) =>
+            {
+                try { this.DialogResult = DialogResult.Cancel; this.Close(); } catch { }
+            };
 
-            bottomTable.Controls.Add(new Panel(), 0, 0);
-            bottomTable.Controls.Add(buttonFlow, 1, 0);
-            bottomPanel.Controls.Add(bottomTable);
+            btnOk.Click += (s, e) =>
+            {
+                try { this.DialogResult = DialogResult.OK; this.Close(); } catch { }
+            };
+
+            // Add in order: Cancel (left), OK (right)
+            rightButtons.Controls.Add(btnCancel);
+            rightButtons.Controls.Add(btnOk);
+
+            bottomPanel.Controls.Add(rightButtons);
             this.Controls.Add(bottomPanel);
 
             // content
@@ -144,6 +164,7 @@ namespace DhcpWmiViewer
             contentPanel.Controls.Add(content);
             this.Controls.Add(contentPanel);
 
+            // Set Accept/Cancel buttons on the form
             this.AcceptButton = btnOk;
             this.CancelButton = btnCancel;
         }

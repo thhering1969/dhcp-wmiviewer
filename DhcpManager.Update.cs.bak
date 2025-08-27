@@ -16,7 +16,7 @@ namespace DhcpWmiViewer
             string clientId,
             string name,
             string description,
-            Func<string, PSCredential?> getCredentials)
+            Func<string, PSCredential> getCredentials)
         {
             DhcpWmiViewer.Helpers.WriteDebugLog("UpdateReservationPropertiesAsync starting");
             DhcpWmiViewer.Helpers.WriteDebugLog($"Server={server}, ScopeId={scopeId}, IP={ipAddress}, ClientIdRaw={clientId}, Name={name}, Desc={description}");

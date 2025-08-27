@@ -18,7 +18,7 @@ namespace DhcpWmiViewer
         /// server = DHCP-Servername, getCreds = delegierte Funktion (muss PSCredential liefern).
         /// Bei Fehlern (einschließlich fehlender Credentials) wird ein leeres DataTable zurückgegeben.
         /// </summary>
-        public static Func<string, Task<DataTable>> CreateLookup(string server, Func<string, PSCredential?> getCreds)
+        public static Func<string, Task<DataTable>> CreateLookup(string server, Func<string, PSCredential> getCreds)
         {
             return async (scopeId) =>
             {

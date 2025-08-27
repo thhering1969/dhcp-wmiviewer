@@ -14,7 +14,7 @@ namespace DhcpWmiViewer
     /// </summary>
     public static class ReservationRemover
     {
-        public static async Task<bool> DeleteReservationAsync(string server, string scopeId, string ipAddress, Func<string, PSCredential?> getCredentials)
+        public static async Task<bool> DeleteReservationAsync(string server, string scopeId, string ipAddress, Func<string, PSCredential> getCredentials)
         {
             try
             {

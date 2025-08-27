@@ -8,7 +8,7 @@ namespace DhcpWmiViewer
 {
     public static partial class DhcpManager
     {
-        public static Task<DataTable> QueryScopesAsync(string server, Func<string, PSCredential?> getCredentials)
+        public static Task<DataTable> QueryScopesAsync(string server, Func<string, PSCredential> getCredentials)
         {
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
@@ -26,7 +26,7 @@ namespace DhcpWmiViewer
             });
         }
 
-        public static Task<DataTable> QueryReservationsAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials)
+        public static Task<DataTable> QueryReservationsAsync(string server, string scopeId, Func<string, PSCredential> getCredentials)
         {
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
@@ -42,7 +42,7 @@ namespace DhcpWmiViewer
             });
         }
 
-        public static Task<DataTable> QueryLeasesAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials)
+        public static Task<DataTable> QueryLeasesAsync(string server, string scopeId, Func<string, PSCredential> getCredentials)
         {
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {

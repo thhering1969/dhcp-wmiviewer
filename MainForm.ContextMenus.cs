@@ -1,88 +1,184 @@
 // MainForm.ContextMenus.cs
+// Repo: DhcpWmiViewer
+// Branch: fix/contextmenu-direct-call
+// **KOMPLETTE DATEI** — zentrale, saubere ContextMenu-Handler für Leases.
+
 using System;
-using System.Reflection;
+using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Diagnostics;
 
 namespace DhcpWmiViewer
 {
     public partial class MainForm : Form
     {
         /// <summary>
-        /// Ersetzt die vorher duplicate SetupReservationsContextMenu-Definition:
-        /// Dieser Helper stellt einen Reflection-invoker zur Verfügung, mit dem
-        /// partial-Implementierungen in anderen Dateien aufgerufen werden können.
+        /// Öffnet den Kontext-Menu-Dialog bzw. startet die Reservation-Erstellung.
+        /// Dieser Handler wird an alle relevanten MenuItems gebunden.
         /// </summary>
-        private async Task InvokeHandlerIfExistsAsync(string methodName)
+        private async void OnContextMenuCreateReservation_Click(object? sender, EventArgs e)
         {
             try
             {
-                var mi = this.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
-                if (mi != null)
-                {
-                    var t = mi.Invoke(this, null) as Task;
-                    if (t != null) await t;
-                    return;
-                }
-
-                // fallback: show message
-                MessageBox.Show(this, $"Handler '{methodName}' ist nicht implementiert.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await OnCreateReservationFromLeaseAsync();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Fehler beim Aufruf von '{methodName}': {ex.Message}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                try { MessageBox.Show(this, "Fehler beim Starten: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
             }
         }
 
         /// <summary>
-        /// Optionaler Fallback: Erzeuge ein sehr kleines ContextMenu und weise es dem dgvReservations
-        /// zu **falls** noch kein Kontextmenü gesetzt ist. Dieses Tool ist benannt, damit es nicht
-        /// mit der Haupt-SetupReservationsContextMenu() kollidiert.
+        /// ContextMenu Opening handler for leases grid.
+        /// Ensures necessary menu items exist and enables/disables them depending on selection.
         /// </summary>
-        private void EnsureFallbackReservationsContextMenu()
+        private async void ContextMenuLeases_Opening(object? sender, CancelEventArgs e)
         {
             try
             {
-                if (dgvReservations == null) return;
-                if (dgvReservations.ContextMenuStrip != null) return;
-
-                var cms = new ContextMenuStrip();
-                var miChange = new ToolStripMenuItem("Change reservation IP...");
-                miChange.Click += async (s, e) => await InvokeHandlerIfExistsAsync("OnChangeReservationIpFromReservationsAsync");
-
-                var miDelete = new ToolStripMenuItem("Löschen");
-                miDelete.Click += async (s, e) => await InvokeHandlerIfExistsAsync("OnDeleteReservationFromReservationsAsync");
-
-                cms.Items.Add(miChange);
-                cms.Items.Add(new ToolStripSeparator());
-                cms.Items.Add(miDelete);
-
-                cms.Opening += (s, e) =>
+                var cms = sender as ContextMenuStrip ?? this.contextMenuLeases;
+                if (cms == null)
                 {
-                    var hasSelection = dgvReservations != null && dgvReservations.SelectedRows.Count == 1;
-                    foreach (ToolStripItem item in cms.Items)
-                    {
-                        if (item is ToolStripSeparator) continue;
-                        item.Enabled = hasSelection;
-                    }
-                    if (!hasSelection) e.Cancel = true;
-                };
+                    e.Cancel = true;
+                    return;
+                }
 
-                dgvReservations.ContextMenuStrip = cms;
+                // Ensure canonical items exist (idempotent)
+                EnsureLeasesMenuItems(cms);
+
+                // Determine selection state
+                bool singleRowSelected = dgvLeases != null && dgvLeases.SelectedRows.Count == 1;
+
+                // Enable/disable items based on selection
+                foreach (ToolStripItem it in cms.Items)
+                {
+                    try
+                    {
+                        if (it is ToolStripMenuItem tmi)
+                        {
+                            var text = (tmi.Text ?? string.Empty).Trim();
+                            if (string.Equals(text, "Create reservation from lease...", StringComparison.OrdinalIgnoreCase))
+                                tmi.Enabled = singleRowSelected;
+                            else if (string.Equals(text, "Refresh leases", StringComparison.OrdinalIgnoreCase))
+                                tmi.Enabled = true;
+                            else
+                                tmi.Enabled = singleRowSelected;
+                        }
+                    }
+                    catch { /* ignore per-item errors */ }
+                }
+
+                await Task.CompletedTask.ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex)
             {
-                // swallow - best effort
+                Debug.WriteLine("ContextMenuLeases_Opening error: " + ex);
+                try { e.Cancel = true; } catch { }
             }
         }
 
         /// <summary>
-        /// Optionaler Wrapper, der per Reflection die tatsächliche Delete-Implementierung (falls vorhanden)
-        /// aufruft. Unbedingt anders benannt, damit es keine Namenskollision mit der konkreten Implementierung gibt.
+        /// Ensures canonical menu items for leases context menu are present and wired.
+        /// Safe to call multiple times.
         /// </summary>
-        private async Task DeleteSelectedReservationViaReflectionAsync()
+        private void EnsureLeasesMenuItems(ContextMenuStrip cms)
         {
-            await InvokeHandlerIfExistsAsync("OnDeleteReservationFromReservationsAsync");
+            if (cms == null) return;
+
+            // Create reservation item
+            var createItem = cms.Items.OfType<ToolStripMenuItem>()
+                                      .FirstOrDefault(i => string.Equals(i.Text, "Create reservation from lease...", StringComparison.OrdinalIgnoreCase));
+            if (createItem == null)
+            {
+                createItem = new ToolStripMenuItem("Create reservation from lease...");
+                // bind central handler (safe)
+                createItem.Click -= OnContextMenuCreateReservation_Click;
+                createItem.Click += OnContextMenuCreateReservation_Click;
+                cms.Items.Insert(0, createItem);
+            }
+            else
+            {
+                // ensure single binding via rebind
+                try
+                {
+                    createItem.Click -= OnContextMenuCreateReservation_Click;
+                    createItem.Click += OnContextMenuCreateReservation_Click;
+                }
+                catch { /* ignore */ }
+            }
+
+            // Refresh leases item
+            var refreshItem = cms.Items.OfType<ToolStripMenuItem>()
+                                       .FirstOrDefault(i => string.Equals(i.Text, "Refresh leases", StringComparison.OrdinalIgnoreCase));
+            if (refreshItem == null)
+            {
+                refreshItem = new ToolStripMenuItem("Refresh leases");
+                refreshItem.Click += async (s, e) =>
+                {
+                    try
+                    {
+                        var scope = TryGetScopeIdFromSelection() ?? string.Empty;
+                        await TryInvokeRefreshLeases(scope);
+                    }
+                    catch (Exception ex)
+                    {
+                        try { MessageBox.Show(this, "Fehler beim Aktualisieren: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                    }
+                };
+                cms.Items.Add(new ToolStripSeparator());
+                cms.Items.Add(refreshItem);
+            }
+            else
+            {
+                try
+                {
+                    // rebind safely
+                    refreshItem.Click -= async (s, e) => { await TryInvokeRefreshLeases(TryGetScopeIdFromSelection() ?? string.Empty); };
+                    refreshItem.Click += async (s, e) =>
+                    {
+                        try { var scope = TryGetScopeIdFromSelection() ?? string.Empty; await TryInvokeRefreshLeases(scope); } catch (Exception ex) { try { MessageBox.Show(this, "Fehler beim Aktualisieren: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { } }
+                    };
+                }
+                catch { /* ignore */ }
+            }
+        }
+
+        /// <summary>
+        /// DataGridView CellMouseDown handler for leases grid.
+        /// Selects the clicked row and shows the context menu.
+        /// </summary>
+        private void DgvLeases_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            try
+            {
+                if (sender is not DataGridView dgv) return;
+                if (e.Button != MouseButtons.Right) return;
+                if (e.RowIndex < 0) return;
+
+                dgv.ClearSelection();
+                dgv.Rows[e.RowIndex].Selected = true;
+                if (dgv.Rows[e.RowIndex].Cells.Count > 0)
+                    dgv.CurrentCell = dgv.Rows[e.RowIndex].Cells[0];
+
+                // Show context menu (if present)
+                try
+                {
+                    var cms = this.contextMenuLeases;
+                    if (cms != null)
+                    {
+                        // Ensure menu items exist and are wired (idempotent)
+                        EnsureLeasesMenuItems(cms);
+                        cms.Show(Cursor.Position);
+                    }
+                }
+                catch { /* ignore show errors */ }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("DgvLeases_CellMouseDown error: " + ex);
+            }
         }
     }
 }

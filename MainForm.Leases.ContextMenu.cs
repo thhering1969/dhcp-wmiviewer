@@ -1,120 +1,42 @@
 // MainForm.Leases.ContextMenu.cs
+// Repo: https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer.git
+// Branch: fix/contextmenu-direct-call
+//
+// THIS FILE IS INTENTIONALLY MINIMAL.
+// Implementations for the leases context menu event handlers have been consolidated
+// into MainForm.ContextMenus.cs to avoid duplicate member definitions.
+// Keep only non-conflicting helper code here (or leave empty).
+
 using System;
 using System.Windows.Forms;
 
 namespace DhcpWmiViewer
 {
+    // COMPLETE FILE
     public partial class MainForm : Form
     {
-        private void DgvLeases_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Right && e.RowIndex >= 0)
-            {
-                try
-                {
-                    if (dgvLeases == null) return;
-                    dgvLeases.ClearSelection();
-                    dgvLeases.Rows[e.RowIndex].Selected = true;
-                    if (dgvLeases.Rows[e.RowIndex].Cells.Count > 0)
-                        dgvLeases.CurrentCell = dgvLeases.Rows[e.RowIndex].Cells[0];
-                }
-                catch { /* ignore UI errors */ }
-            }
-        }
-
-        private void ContextMenuLeases_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        // Intentionally empty: Do NOT keep DgvLeases_CellMouseDown or ContextMenuLeases_Opening
+        // implementations here if they exist in MainForm.ContextMenus.cs.
+        //
+        // Provide a convenience method to ensure menu items (if other partials call it).
+        public void EnsureLeasesContextMenuInitialized()
         {
             try
             {
-                if (dgvLeases == null)
+                try
                 {
-                    e.Cancel = true;
-                    return;
-                }
-
-                var clientPos = dgvLeases.PointToClient(Cursor.Position);
-                var hit = dgvLeases.HitTest(clientPos.X, clientPos.Y);
-
-                if (hit.RowIndex < 0 || dgvLeases.SelectedRows.Count == 0)
-                {
-                    e.Cancel = true;
-                    return;
-                }
-
-                var row = dgvLeases.SelectedRows[0];
-                string stateRaw = TryGetCellValue(row, "Col_AddressState", "AddressState") ?? string.Empty;
-                var state = stateRaw.Trim().ToLowerInvariant();
-
-                bool containsReservation = state.Contains("reservation");
-                bool containsActive = state.Contains("active");
-                bool containsLease = state.Contains("lease");
-
-                if (contextMenuLeases == null) contextMenuLeases = new ContextMenuStrip();
-                contextMenuLeases.Items.Clear();
-
-                if (containsReservation)
-                {
-                    var miChange = new ToolStripMenuItem("Change reservation IP...");
-                    // Reflection path: robust gegenüber fehlender Methode (vermeidet Compile-Error)
-                    miChange.Click += async (s, args) =>
+                    if (this.contextMenuLeases != null)
                     {
-                        try
-                        {
-                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync").ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            try { MessageBox.Show(this, "Fehler beim Aufruf von OnChangeReservationFromLeaseRowAsync: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
-                        }
-                    };
-                    contextMenuLeases.Items.Add(miChange);
+                        // Ensure items exist and are wired (delegates to ContextMenus partial)
+                        var cms = this.contextMenuLeases;
+                        // ensure items via the central partial method (if accessible)
+                        var mi = this.GetType().GetMethod("EnsureLeasesMenuItems", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                        if (mi != null) mi.Invoke(this, new object[] { cms });
+                    }
                 }
-                else if (containsActive || containsLease)
-                {
-                    var miConvert = new ToolStripMenuItem("Create reservation from lease...");
-                    // Direkter Aufruf: erwartet, dass OnCreateReservationFromLeaseAsync existiert
-                    miConvert.Click += async (s, args) =>
-                    {
-                        try
-                        {
-                            await OnCreateReservationFromLeaseAsync().ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            try { MessageBox.Show(this, "Fehler beim Aufruf von OnCreateReservationFromLeaseAsync: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
-                        }
-                    };
-                    contextMenuLeases.Items.Add(miConvert);
-                }
-                else
-                {
-                    var miChange = new ToolStripMenuItem("Change reservation IP...");
-                    miChange.Click += async (s, args) =>
-                    {
-                        try
-                        {
-                            await InvokeOptionalHandlerAsync("OnChangeReservationFromLeaseRowAsync").ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            try { MessageBox.Show(this, "Fehler beim Aufruf von OnChangeReservationFromLeaseRowAsync: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
-                        }
-                    };
-                    contextMenuLeases.Items.Add(miChange);
-                }
-
-                var hasSelection = dgvLeases.SelectedRows.Count > 0;
-                foreach (ToolStripItem item in contextMenuLeases.Items) item.Enabled = hasSelection;
-
-                if (!e.Cancel && contextMenuLeases.Items.Count > 0)
-                {
-                    contextMenuLeases.Show(Cursor.Position);
-                }
+                catch { /* ignore */ }
             }
-            catch
-            {
-                try { e.Cancel = true; } catch { }
-            }
+            catch { /* swallow */ }
         }
     }
 }

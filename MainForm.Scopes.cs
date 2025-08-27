@@ -5,11 +5,17 @@ using System.DirectoryServices;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Data;
+using System.Collections.Concurrent;
 
 namespace DhcpWmiViewer
 {
     public partial class MainForm : Form
     {
+        // Prefetch cache: key = "{canonicalServer}::{scopeId}" -> Task<DataTable?> (background fetch)
+        // ConcurrentDictionary damit mehrere Threads/Tasks sicher arbeiten können.
+        private readonly ConcurrentDictionary<string, Task<DataTable?>> _reservationPrefetchTasks = new();
+
         private async void BtnDiscover_Click(object? sender, EventArgs e)
         {
             btnDiscover.Enabled = false;
@@ -151,6 +157,113 @@ namespace DhcpWmiViewer
                 pb.Visible = false;
                 btnQuery.Enabled = true;
             }
+        }
+
+        // ===========================
+        // Prefetch helpers (complete implementations)
+        // ===========================
+
+        /// <summary>
+        /// Startet (non-blocking) einen Background-Task, der Reservations für den gegebenen scope abruft
+        /// und das Ergebnis in _reservationPrefetchTasks cached. Funktion ist idempotent (GetOrAdd).
+        /// </summary>
+        public void StartReservationPrefetchForScope(string server, string scopeId)
+        {
+            if (string.IsNullOrWhiteSpace(scopeId)) return;
+
+            var canonicalServer = CanonicalizeServerKey(server);
+            var key = $"{canonicalServer}::{scopeId}";
+
+            // GetOrAdd: wenn bereits ein Task existiert, wird er wiederverwendet (keine Doppelstarts).
+            _reservationPrefetchTasks.GetOrAdd(key, k =>
+            {
+                return Task.Run(async () =>
+                {
+                    try
+                    {
+                        Helpers.WriteDebugLog($"TRACE: Prefetch reservations started for {canonicalServer}::{scopeId}");
+                        var dt = await DhcpManager.QueryReservationsAsync(server, scopeId, s => GetCredentialsForServer(s)!).ConfigureAwait(false);
+                        Helpers.WriteDebugLog($"TRACE: Prefetch reservations finished for {canonicalServer}::{scopeId} (rows={(dt?.Rows.Count.ToString() ?? "null")})");
+                        return dt;
+                    }
+                    catch (Exception ex)
+                    {
+                        Helpers.WriteDebugLog($"Prefetch Reservations failed (background): {ex}");
+                        return null;
+                    }
+                });
+            });
+        }
+
+        /// <summary>
+        /// Liefert das bereits fertiggestellte Ergebnis einer Prefetch-Task (nicht-blockierend) zurück.
+        /// Suche erfolgt robust: exakte key -> alternative key -> wildcard search nach scopeId.
+        /// </summary>
+        /// <returns>DataTable wenn fertig vorhanden, sonst null</returns>
+        public DataTable? TryGetPrefetchedReservations(string server, string scopeId)
+        {
+            if (string.IsNullOrWhiteSpace(scopeId)) return null;
+
+            try
+            {
+                var canonical = CanonicalizeServerKey(server);
+                var key = $"{canonical}::{scopeId}";
+
+                if (_reservationPrefetchTasks.TryGetValue(key, out var t) && t.IsCompletedSuccessfully)
+                {
+                    Helpers.WriteDebugLog($"TRACE: TryGetPrefetchedReservations found exact-key {key}");
+                    return t.Result;
+                }
+
+                // alternative canonical (z.B. the explicit configured server vs "." default)
+                var altCanonical = CanonicalizeServerKey(GetServerNameOrDefault() ?? ".");
+                var altKey = $"{altCanonical}::{scopeId}";
+
+                if (!string.Equals(altKey, key, StringComparison.OrdinalIgnoreCase)
+                    && _reservationPrefetchTasks.TryGetValue(altKey, out var t2)
+                    && t2.IsCompletedSuccessfully)
+                {
+                    Helpers.WriteDebugLog($"TRACE: TryGetPrefetchedReservations found alt-key {altKey} for requested {key}");
+                    return t2.Result;
+                }
+
+                // last-resort: return any completed prefetch that matches the same scopeId (ignore server part)
+                foreach (var kv in _reservationPrefetchTasks)
+                {
+                    try
+                    {
+                        var parts = kv.Key.Split(new[] { "::" }, StringSplitOptions.None);
+                        if (parts.Length == 2 && string.Equals(parts[1], scopeId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var task = kv.Value;
+                            if (task.IsCompletedSuccessfully)
+                            {
+                                Helpers.WriteDebugLog($"TRACE: TryGetPrefetchedReservations found wildcard-key {kv.Key} for requested {key}");
+                                return task.Result;
+                            }
+                        }
+                    }
+                    catch { /* ignore problematic entries */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                Helpers.WriteDebugLog("TryGetPrefetchedReservations error: " + ex);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Hilfs-Methode: Normiert einen Server-String zu einem einfachen Schlüsselteil.
+        /// "." bleibt ".", leere Strings werden zu ".". Ansonsten lowercased trimmed.
+        /// </summary>
+        private static string CanonicalizeServerKey(string? server)
+        {
+            if (string.IsNullOrWhiteSpace(server)) return ".";
+            var s = server.Trim();
+            if (s == ".") return ".";
+            return s.ToLowerInvariant();
         }
     }
 }

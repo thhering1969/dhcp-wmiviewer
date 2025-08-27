@@ -1,4 +1,4 @@
-﻿// MainForm.Leases.UI.cs
+// MainForm.Leases.UI.cs
 using System;
 using System.Data;
 using System.Drawing;

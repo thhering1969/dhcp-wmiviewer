@@ -1,4 +1,6 @@
 // MainForm.ReservationsHandlers.cs
+// Option 1 — Signaturen exakt passend zu .NET-Delegates (object sender)
+// Einfach kopieren & einfügen
 
 using System;
 using System.Data;
@@ -82,7 +84,8 @@ namespace DhcpWmiViewer
             }
         }
 
-        private void DgvReservations_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
+        // <- HIER: Signatur angepasst (object sender)
+        private void DgvReservations_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
             try
             {
@@ -179,7 +182,8 @@ namespace DhcpWmiViewer
             }
         }
 
-        private void DgvReservations_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+        // <- HIER: Signatur angepasst (object sender)
+        private void DgvReservations_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
             try
             {

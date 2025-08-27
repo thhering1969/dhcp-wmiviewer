@@ -18,7 +18,7 @@ namespace DhcpWmiViewer
             string clientId,
             string name,
             string description,
-            Func<string, PSCredential?> getCredentials)
+            Func<string, PSCredential> getCredentials)
         {
             DhcpWmiViewer.Helpers.WriteDebugLog("ChangeReservationIpAsync starting");
             DhcpWmiViewer.Helpers.WriteDebugLog($"Server={server}, ScopeId={scopeId}, OldIp={oldIp}, NewIp={newIp}, ClientIdRaw={clientId}");
@@ -160,7 +160,7 @@ namespace DhcpWmiViewer
             string scopeId,
             string ipAddress,
             string clientId,
-            Func<string, PSCredential?> getCredentials)
+            Func<string, PSCredential> getCredentials)
         {
             DhcpWmiViewer.Helpers.WriteDebugLog("DeleteReservationAsync starting");
             DhcpWmiViewer.Helpers.WriteDebugLog($"Server={server}, ScopeId={scopeId}, IP={ipAddress}, ClientIdRaw={clientId}");
