@@ -1,20 +1,19 @@
 // MainForm.Leases.Handlers.cs
-// COMPLETE FILE - ersetzt vorhandene Datei
-// Robuster Dialog-Show Pfad + Background-Prefetch verwendet expliziten Server + nur dann Credential-Callback,
-// wenn tatsächlich eine PSCredential vom GetCredentialsForServer zurückgegeben wird.
 
 using System;
 using System.Data;
 using System.Linq;
-using System.Reflection;
+using System.Management.Automation;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Management.Automation; // für PSCredential
 
 namespace DhcpWmiViewer
 {
     public partial class MainForm : Form
     {
+        // existing fields assumed: dgvLeases, txtServer, GetCredentialsForServer, TryGetScopeIdFromSelection, etc.
+
+        // ----- Handler: Create Reservation from Lease (context menu / double click) -----
         private async Task OnCreateReservationFromLeaseAsync()
         {
             try
@@ -23,492 +22,114 @@ namespace DhcpWmiViewer
 
                 if (dgvLeases == null || dgvLeases.SelectedRows.Count == 0)
                 {
-                    MessageBox.Show(this, "Bitte zuerst eine Lease-Zeile auswählen.", "Keine Auswahl", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(this, "Bitte zuerst eine Lease auswählen.", "Keine Auswahl", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
-                var leaseRow = dgvLeases.SelectedRows[0];
-                var (oldIp, clientId, hostName) = ReadLeaseRowValuesSafe(leaseRow);
-                Helpers.WriteDebugLog($"TRACE: Lease values: IP={oldIp}, Clientid={clientId}, HostName={hostName}");
+                var row = dgvLeases.SelectedRows[0];
+                var ip = row.Cells["IPAddress"]?.Value?.ToString() ?? string.Empty;
+                var clientId = row.Cells["ClientId"]?.Value?.ToString() ?? string.Empty;
+                var hostName = row.Cells["HostName"]?.Value?.ToString() ?? string.Empty;
 
-                if (string.IsNullOrWhiteSpace(oldIp))
-                {
-                    MessageBox.Show(this, "Die ausgewählte Zeile enthält keine IP-Adresse.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
+                Helpers.WriteDebugLog($"TRACE: Lease values: IP={ip}, Clientid={clientId}, HostName={hostName}");
 
+                // Try to resolve the scope id from selected scope grid (or other means)
                 var scopeId = TryGetScopeIdFromSelection();
                 if (string.IsNullOrWhiteSpace(scopeId))
                 {
-                    MessageBox.Show(this, "Bitte zuerst einen Scope oben auswählen.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, "Bitte zuerst einen Scope auswählen.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
-                Helpers.WriteDebugLog($"TRACE: Scopeld resolved: '{scopeId}'");
 
-                // Versuche, Range/Subnet aus "dgv" (Scopes grid) falls vorhanden zu lesen — best-effort
+                // Gather scope meta (start/end/mask) if available from scopes grid (dgv)
                 string startRange = string.Empty, endRange = string.Empty, subnetMask = string.Empty;
                 try
                 {
                     if (dgv != null && dgv.SelectedRows.Count > 0)
                     {
                         var srow = dgv.SelectedRows[0];
-                        startRange = TryGetCellValue(srow, "StartRange", "Start") ?? string.Empty;
-                        endRange = TryGetCellValue(srow, "EndRange", "End") ?? string.Empty;
-                        subnetMask = TryGetCellValue(srow, "SubnetMask", "Mask") ?? string.Empty;
+                        startRange = srow.Cells["StartRange"]?.Value?.ToString() ?? string.Empty;
+                        endRange = srow.Cells["EndRange"]?.Value?.ToString() ?? string.Empty;
+                        subnetMask = srow.Cells["SubnetMask"]?.Value?.ToString() ?? string.Empty;
+                        Helpers.WriteDebugLog($"TRACE: scope meta start={startRange} end={endRange} mask={subnetMask}");
                     }
                 }
-                catch { /* ignore */ }
+                catch { /* best-effort */ }
 
-                Helpers.WriteDebugLog($"TRACE: scope meta start={startRange} end={endRange} mask={subnetMask}");
+                // server name
+                var server = GetServerNameOrDefault();
 
-                // --------------- Dialog erzeugen / anzeigen ----------------
+                // Decide firewall pool range: (your requirement: 192.168.116.180 - 192.168.116.254)
+                // You can compute this dynamically if needed; for now set constants (or fetch from config).
+                var firewallStart = "192.168.116.180";
+                var firewallEnd = "192.168.116.254";
+
+                Helpers.WriteDebugLog("TRACE: Preparing to create ConvertLeaseToReservationDialog instance");
+
+                // Create dialog instance (parameterless constructor used for compatibility)
+                using var dlg = new ConvertLeaseToReservationDialog();
+
+                // Try to set common properties (existing method in MainForm.Core)
+                TrySetPropertyIfExists(dlg, "ScopeId", scopeId);
+                TrySetPropertyIfExists(dlg, "Scope", scopeId);
+                TrySetPropertyIfExists(dlg, "IpAddress", ip);
+                TrySetPropertyIfExists(dlg, "IPAddress", ip);
+                TrySetPropertyIfExists(dlg, "ClientId", clientId);
+                TrySetPropertyIfExists(dlg, "Client", clientId);
+                TrySetPropertyIfExists(dlg, "HostName", hostName);
+                TrySetPropertyIfExists(dlg, "Name", hostName);
+                TrySetPropertyIfExists(dlg, "StartRange", startRange);
+                TrySetPropertyIfExists(dlg, "EndRange", endRange);
+                TrySetPropertyIfExists(dlg, "SubnetMask", subnetMask);
+
+                // Set firewall range (properties added by the partial class above)
+                TrySetPropertyIfExists(dlg, "FirewallStart", firewallStart);
+                TrySetPropertyIfExists(dlg, "FirewallEnd", firewallEnd);
+
+                // Assign ReservationLookup delegate so dialog can fetch reservations itself if needed.
+                // ReservationLookupAdapter.CreateLookup captures server and credential-provider.
                 try
                 {
-                    using var dlg = new ConvertLeaseToReservationDialog();
-
-                    // Initialize dialog using robust local helper (calls core helpers where available)
-                    TryInitializeDialogReflection_Local(dlg, scopeId, oldIp, clientId, hostName, startRange, endRange, subnetMask, string.Empty);
-
-                    // --- PREFETCH in BACKGROUND: starte Prefetch nachdem dlg existiert, damit wir Ergebnis direkt auf dlg setzen können.
-                    try
-                    {
-                        // Bestimme expliziten Server für Prefetch (wie beim normalen Laden)
-                        var serverForPrefetch = GetServerNameOrDefault();
-
-                        // Wenn GetServerNameOrDefault() "." oder leer liefert, versuche UI-Feld / discovered item
-                        if (string.IsNullOrWhiteSpace(serverForPrefetch) || serverForPrefetch == ".")
-                        {
-                            var uiCandidate = txtServer?.Text?.Trim();
-                            if (string.IsNullOrWhiteSpace(uiCandidate) && cmbDiscoveredServers != null && cmbDiscoveredServers.SelectedItem != null)
-                                uiCandidate = cmbDiscoveredServers.SelectedItem.ToString();
-
-                            if (!string.IsNullOrWhiteSpace(uiCandidate))
-                                serverForPrefetch = uiCandidate!;
-                            else
-                                serverForPrefetch = "."; // fallback
-                        }
-
-                        // Entscheide: übergeben wir einen Credential-Callback oder null?
-                        Func<string, PSCredential?>? credFactoryOrNull = null;
-                        try
-                        {
-                            // Prüfe, ob GetCredentialsForServer für den konkreten Zielserver tatsächlich eine PSCredential liefert
-                            var maybeCred = GetCredentialsForServer(serverForPrefetch);
-                            if (maybeCred != null)
-                            {
-                                // wenn tatsächlich vorhanden -> wir geben einen Delegate zurück, der die PSCredential liefert
-                                credFactoryOrNull = s => GetCredentialsForServer(s)!;
-                                Helpers.WriteDebugLog($"TRACE: Prefetch: GetCredentialsForServer returned <credential> for {serverForPrefetch}::{scopeId}");
-                            }
-                            else
-                            {
-                                // keine expliziten Credentials -> übergebe null, damit PowerShellExecutor nur ohne creds versucht.
-                                credFactoryOrNull = null;
-                                Helpers.WriteDebugLog($"TRACE: Prefetch: GetCredentialsForServer returned <null> for {serverForPrefetch}::{scopeId}");
-                            }
-                        }
-                        catch (Exception exCred)
-                        {
-                            Helpers.WriteDebugLog("TRACE: Prefetch: GetCredentialsForServer threw: " + exCred);
-                            credFactoryOrNull = null;
-                        }
-
-                        Helpers.WriteDebugLog($"TRACE: Preparing to start reservation prefetch (background) for {serverForPrefetch}::{scopeId}");
-
-                        // Start background task (fire-and-forget) — do not await (so dialog shows immediately)
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                Helpers.WriteDebugLog($"TRACE: Starting reservation prefetch (background) for {serverForPrefetch}::{scopeId}");
-                                var resTable = await DhcpManager.QueryReservationsAsync(serverForPrefetch, scopeId, credFactoryOrNull).ConfigureAwait(false);
-                                if (resTable != null)
-                                {
-                                    foreach (DataRow r in resTable.Rows)
-                                    {
-                                        var ipVal = (r["IPAddress"]?.ToString() ?? string.Empty).Trim();
-                                        if (string.Equals(ipVal, oldIp, StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            var desc = r.Table.Columns.Contains("Description") ? r["Description"]?.ToString() ?? string.Empty : string.Empty;
-
-                                            // marshal to UI thread to set description on dialog if still valid
-                                            try
-                                            {
-                                                if (!dlg.IsDisposed && dlg.IsHandleCreated)
-                                                {
-                                                    dlg.BeginInvoke(new Action(() =>
-                                                    {
-                                                        try { dlg.SetPrefetchedDescription(desc ?? string.Empty); } catch { }
-                                                    }));
-                                                }
-                                            }
-                                            catch { /* swallow */ }
-
-                                            Helpers.WriteDebugLog("TRACE: Prefetch found description (background)");
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                Helpers.WriteDebugLog($"TRACE: Reservation prefetch (background) finished for {serverForPrefetch}::{scopeId}");
-                            }
-                            catch (Exception ex)
-                            {
-                                Helpers.WriteDebugLog("Prefetch Reservations failed (background): " + ex);
-                            }
-                        });
-                    }
-                    catch (Exception exPrefetchStart)
-                    {
-                        Helpers.WriteDebugLog("Failed to start prefetch task: " + exPrefetchStart);
-                    }
-
-                    // ShowDialog must run on UI thread
-                    DialogResult dialogResult = DialogResult.None;
-                    if (this.InvokeRequired)
-                    {
-                        this.Invoke(new Action(() => { dialogResult = dlg.ShowDialog(this); }));
-                    }
-                    else
-                    {
-                        dialogResult = dlg.ShowDialog(this);
-                    }
-
-                    if (dialogResult != DialogResult.OK)
-                    {
-                        Helpers.WriteDebugLog("TRACE: Dialog cancelled or closed -> aborting.");
-                        return;
-                    }
-
-                    // If OK -> call DhcpManager to create reservation.
-                    try
-                    {
-                        var server = GetServerNameOrDefault();
-                        this.Enabled = false;
-
-                        // Use dialog getters (robust)
-                        var newIp = TryInvokeDialogGetterAsString_Local(dlg, "GetIpAddress") ?? TryGetDialogPropertyText_Local(dlg, "IpAddress", "IPAddress", "txtIP", "txtIp") ?? string.Empty;
-                        var newClient = TryInvokeDialogGetterAsString_Local(dlg, "GetClientId") ?? TryGetDialogPropertyText_Local(dlg, "ClientId", "Client", "txtClient", "txtClientId") ?? string.Empty;
-                        var newName = TryInvokeDialogGetterAsString_Local(dlg, "GetNameFallback") ?? TryGetDialogPropertyText_Local(dlg, "Name", "HostName", "txtName", "txtHostname") ?? string.Empty;
-                        var newDesc = TryInvokeDialogGetterAsString_Local(dlg, "GetDescriptionFallback") ?? TryGetDialogPropertyText_Local(dlg, "Description", "Desc", "txtDescription") ?? string.Empty;
-
-                        await InvokeCreateReservationFromLeaseReflectionAsync_Local(
-                            server,
-                            scopeId,
-                            oldIp,
-                            newIp,
-                            newClient,
-                            newName,
-                            newDesc,
-                            s => GetCredentialsForServer(s)!
-                        );
-
-                        MessageBox.Show(this, "Reservation erfolgreich erstellt.", "Erfolg", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        await TryInvokeRefreshReservations(scopeId);
-                        await TryInvokeRefreshLeases(scopeId);
-                    }
-                    catch (Exception exCreate)
-                    {
-                        MessageBox.Show(this, "Fehler beim Erstellen der Reservation: " + exCreate.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                    finally
-                    {
-                        this.Enabled = true;
-                    }
+                    var reservationLookup = ReservationLookupAdapter.CreateLookup(server, s => GetCredentialsForServer(s)!);
+                    TryAssignDelegatePropertyIfExists(dlg, "ReservationLookup", reservationLookup);
                 }
-                catch (Exception exDlg)
+                catch
                 {
-                    Helpers.WriteDebugLog("ERROR: Dialog block failed: " + exDlg);
-                    try { MessageBox.Show(this, "Dialog-Fehler: " + exDlg.ToString(), "Dialog Exception", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
-                    return;
+                    // ignore if assignment fails (dialog still works with prefetched data)
+                }
+
+                // If you have a prefetched reservations table available in the form, pass it to dialog
+                try
+                {
+                    if (reservationTable != null && reservationTable.Rows.Count > 0)
+                        TrySetPropertyIfExists(dlg, "PrefetchedReservations", reservationTable);
+                }
+                catch { /* swallow */ }
+
+                // If dialog has an initializer method, call it
+                TryInvokeInitializeMethodIfExists(dlg, scopeId, ip, clientId, hostName, startRange, endRange, subnetMask);
+
+                Helpers.WriteDebugLog("TRACE: About to show ConvertLeaseToReservationDialog (ensured)");
+                var dr = dlg.ShowDialog(this);
+                if (dr == DialogResult.OK)
+                {
+                    Helpers.WriteDebugLog("TRACE: ConvertLeaseToReservationDialog returned OK");
+                    // Optionally refresh reservations / leases after create
+                    await TryInvokeRefreshReservations(scopeId);
+                    await TryInvokeRefreshLeases(scopeId);
+                }
+                else
+                {
+                    Helpers.WriteDebugLog("TRACE: Dialog closed with result: " + dr);
                 }
             }
             catch (Exception ex)
             {
-                Helpers.WriteDebugLog("ERROR: Unexpected in OnCreateReservationFromLeaseAsync: " + ex);
-                try { MessageBox.Show(this, "Unerwarteter Fehler in OnCreateReservationFromLeaseAsync: " + ex.ToString(), "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                Helpers.WriteDebugLog("TRACE: OnCreateReservationFromLeaseAsync error: " + ex);
+                MessageBox.Show(this, "Fehler beim Erstellen der Reservation: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        #region Local helpers (unique names to avoid collisions with Core partial)
-
-        private void TryInitializeDialogReflection_Local(object dlg, string scopeId, string oldIp, string clientId, string hostName, string startRange, string endRange, string subnetMask, string description)
-        {
-            if (dlg == null) return;
-            var dlgType = dlg.GetType();
-
-            // Try common initializer methods first
-            var candidate = dlgType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                                   .FirstOrDefault(m => string.Equals(m.Name, "InitializeWithValues", StringComparison.OrdinalIgnoreCase)
-                                                     || string.Equals(m.Name, "Initialize", StringComparison.OrdinalIgnoreCase)
-                                                     || string.Equals(m.Name, "Init", StringComparison.OrdinalIgnoreCase));
-
-            if (candidate != null)
-            {
-                var ps = candidate.GetParameters();
-                object[] args;
-                if (ps.Length == 8)
-                {
-                    args = new object[] { scopeId, oldIp, clientId, hostName, startRange, endRange, subnetMask, description };
-                }
-                else if (ps.Length == 7)
-                {
-                    args = new object[] { scopeId, oldIp, clientId, hostName, startRange, endRange, subnetMask };
-                }
-                else if (ps.Length == 4)
-                {
-                    args = new object[] { oldIp, clientId, hostName, description };
-                }
-                else
-                {
-                    args = new object[ps.Length];
-                    for (int i = 0; i < ps.Length; i++) args[i] = null!;
-                }
-
-                try
-                {
-                    candidate.Invoke(dlg, args);
-                    return;
-                }
-                catch { /* fallback to property setting below */ }
-            }
-
-            // Try to call core partial helper TrySetPropertyIfExists if available
-            try
-            {
-                var coreMethod = this.GetType().GetMethod("TrySetPropertyIfExists", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                if (coreMethod != null)
-                {
-                    coreMethod.Invoke(this, new object[] { dlg, "ScopeId", scopeId });
-                    coreMethod.Invoke(this, new object[] { dlg, "OldIp", oldIp });
-                    coreMethod.Invoke(this, new object[] { dlg, "IpAddress", oldIp });
-                    coreMethod.Invoke(this, new object[] { dlg, "ClientId", clientId });
-                    coreMethod.Invoke(this, new object[] { dlg, "HostName", hostName });
-                    coreMethod.Invoke(this, new object[] { dlg, "Name", hostName });
-                    coreMethod.Invoke(this, new object[] { dlg, "StartRange", startRange });
-                    coreMethod.Invoke(this, new object[] { dlg, "EndRange", endRange });
-                    coreMethod.Invoke(this, new object[] { dlg, "SubnetMask", subnetMask });
-                    coreMethod.Invoke(this, new object[] { dlg, "Description", description });
-                    coreMethod.Invoke(this, new object[] { dlg, "Desc", description });
-                    return;
-                }
-            }
-            catch { /* swallow */ }
-
-            // Last resort: local simple setters and known control names
-            TrySetPropertySimple_Local(dlg, "ScopeId", scopeId);
-            TrySetPropertySimple_Local(dlg, "IpAddress", oldIp);
-            TrySetPropertySimple_Local(dlg, "ClientId", clientId);
-            TrySetPropertySimple_Local(dlg, "HostName", hostName);
-            TrySetPropertySimple_Local(dlg, "Description", description);
-
-            TrySetFieldOrControlText_Local(dlg, "txtIp", oldIp);
-            TrySetFieldOrControlText_Local(dlg, "txtClient", clientId);
-            TrySetFieldOrControlText_Local(dlg, "txtName", hostName);
-            TrySetFieldOrControlText_Local(dlg, "txtDescription", description);
-        }
-
-        private void TrySetPropertySimple_Local(object target, string propName, string? value)
-        {
-            if (target == null || string.IsNullOrWhiteSpace(propName)) return;
-            try
-            {
-                var pi = target.GetType().GetProperty(propName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
-                if (pi != null && pi.CanWrite && (pi.PropertyType == typeof(string) || !pi.PropertyType.IsValueType))
-                {
-                    pi.SetValue(target, value);
-                    return;
-                }
-
-                var fi = target.GetType().GetField(propName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
-                if (fi != null)
-                {
-                    if (fi.FieldType == typeof(string))
-                    {
-                        fi.SetValue(target, value);
-                    }
-                }
-            }
-            catch { /* swallow */ }
-        }
-
-        private void TrySetFieldOrControlText_Local(object target, string fieldName, string? text)
-        {
-            if (target == null || string.IsNullOrWhiteSpace(fieldName)) return;
-            try
-            {
-                var fi = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
-                if (fi != null)
-                {
-                    var fldVal = fi.GetValue(target);
-                    if (fldVal != null)
-                    {
-                        var textProp = fldVal.GetType().GetProperty("Text", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                        if (textProp != null && textProp.CanWrite)
-                        {
-                            textProp.SetValue(fldVal, text);
-                            return;
-                        }
-                    }
-
-                    if (fi.FieldType == typeof(string))
-                    {
-                        fi.SetValue(target, text);
-                        return;
-                    }
-                }
-
-                var prop = target.GetType().GetProperty(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
-                if (prop != null)
-                {
-                    var ctrl = prop.GetValue(target);
-                    if (ctrl != null)
-                    {
-                        var textProp = ctrl.GetType().GetProperty("Text", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                        if (textProp != null && textProp.CanWrite)
-                        {
-                            textProp.SetValue(ctrl, text);
-                        }
-                    }
-                }
-            }
-            catch { /* swallow */ }
-        }
-
-        private string? TryInvokeDialogGetterAsString_Local(object dlg, string methodName)
-        {
-            if (dlg == null || string.IsNullOrWhiteSpace(methodName)) return null;
-            try
-            {
-                var mi = dlg.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
-                if (mi != null && mi.GetParameters().Length == 0)
-                {
-                    var val = mi.Invoke(dlg, null);
-                    return val?.ToString();
-                }
-            }
-            catch { /* swallow */ }
-            return null;
-        }
-
-        private string? TryGetDialogPropertyText_Local(object dlg, params string[] propNames)
-        {
-            if (dlg == null || propNames == null) return null;
-            try
-            {
-                foreach (var pn in propNames)
-                {
-                    var pi = dlg.GetType().GetProperty(pn, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
-                    if (pi != null && pi.CanRead)
-                    {
-                        var v = pi.GetValue(dlg);
-                        if (v != null)
-                        {
-                            var tprop = v.GetType().GetProperty("Text", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                            if (tprop != null && tprop.CanRead)
-                            {
-                                var tv = tprop.GetValue(v);
-                                if (tv != null) return tv.ToString();
-                            }
-
-                            return v.ToString();
-                        }
-                    }
-                }
-            }
-            catch { /* swallow */ }
-            return null;
-        }
-
-        /// <summary>
-        /// Reflection-based invoker for DhcpManager.CreateReservationFromLeaseAsync that tries several overloads.
-        /// </summary>
-        private async Task InvokeCreateReservationFromLeaseReflectionAsync_Local(string server, string scopeId, string oldIp, string newIp, string newClient, string newName, string newDesc, Func<string, PSCredential?> credFactory)
-        {
-            var dmType = typeof(DhcpManager);
-            var methods = dmType.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)
-                                .Where(m => string.Equals(m.Name, "CreateReservationFromLeaseAsync", StringComparison.OrdinalIgnoreCase))
-                                .ToArray();
-
-            if (methods.Length == 0) throw new MissingMethodException("DhcpManager.CreateReservationFromLeaseAsync not found.");
-
-            MethodInfo? chosen = null;
-            object[]? args = null;
-
-            var candidateArgsList = new object[][]
-            {
-                new object[] { server, scopeId, oldIp, newIp, newClient, newName, newDesc, (object)credFactory },
-                new object[] { server, scopeId, oldIp, newIp, newClient, newName, newDesc },
-                new object[] { server, scopeId, oldIp, newIp, newClient, newName },
-                new object[] { server, scopeId, oldIp, newIp, newClient },
-                new object[] { server, scopeId, oldIp, newIp }
-            };
-
-            foreach (var candArgs in candidateArgsList)
-            {
-                foreach (var m in methods)
-                {
-                    var ps = m.GetParameters();
-                    if (ps.Length != candArgs.Length) continue;
-
-                    bool ok = true;
-                    for (int i = 0; i < ps.Length; i++)
-                    {
-                        var pType = ps[i].ParameterType;
-                        var arg = candArgs[i];
-                        if (arg == null)
-                        {
-                            if (pType.IsValueType && Nullable.GetUnderlyingType(pType) == null)
-                            {
-                                ok = false; break;
-                            }
-                        }
-                        else
-                        {
-                            if (!pType.IsAssignableFrom(arg.GetType()))
-                            {
-                                if (i == ps.Length - 1 && arg is Func<string, PSCredential?> && typeof(Delegate).IsAssignableFrom(pType))
-                                {
-                                    ok = true; // allow delegate coercion later
-                                }
-                                else
-                                {
-                                    ok = false; break;
-                                }
-                            }
-                        }
-                    }
-
-                    if (ok)
-                    {
-                        chosen = m;
-                        args = candArgs;
-                        break;
-                    }
-                }
-                if (chosen != null) break;
-            }
-
-            if (chosen == null || args == null) throw new MissingMethodException("Keine passende Überladung von DhcpManager.CreateReservationFromLeaseAsync gefunden.");
-
-            object? instance = null;
-            if (!chosen.IsStatic)
-            {
-                var ctor = dmType.GetConstructor(Type.EmptyTypes);
-                if (ctor != null) instance = ctor.Invoke(null);
-            }
-
-            var result = chosen.Invoke(instance, args);
-            if (result is Task t)
-            {
-                await t.ConfigureAwait(false);
-            }
-            else
-            {
-                return;
-            }
-        }
-
-        #endregion
+        // --- other handlers and helper methods remain unchanged in this partial ---
     }
 }

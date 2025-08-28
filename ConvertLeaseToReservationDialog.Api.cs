@@ -7,10 +7,15 @@
 // - InitializeComponent() wird jetzt direkt aufgerufen (keine stille Unterdrückung von Ausnahmen).
 // - Defensive, sichtbare Fehlerdiagnose bei Exception in InitializeComponent.
 // - Setze sichere Sichtbarkeits-Defaults nach der Initialisierung.
+// - Weiterleitung (forward) von ScopeId/FirewallRange/ReservationLookup an eingebettetes IpPicker-Control.
 
 using System;
 using System.ComponentModel;
 using System.Windows.Forms;
+using System.Data;
+using System.Threading.Tasks;
+using System.Linq;
+using System.Reflection;
 
 namespace DhcpWmiViewer
 {
@@ -70,44 +75,102 @@ namespace DhcpWmiViewer
             }
             catch { /* defensive */ }
 
+            // --- forward lookup + scope info to embedded IpPicker control (if present) ---
+            try
+            {
+                // Versuche Feld "ipPicker" (private field generated/angelegt) zu finden
+                IpPicker? ipPickerCtrl = null;
+                var fi = this.GetType().GetField("ipPicker", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (fi != null) ipPickerCtrl = fi.GetValue(this) as IpPicker;
+
+                // Falls nicht als Feld vorhanden: suche control-Tree nach Name "ipPicker"
+                if (ipPickerCtrl == null)
+                {
+                    var found = this.Controls.Find("ipPicker", true).FirstOrDefault();
+                    if (found is IpPicker ipc) ipPickerCtrl = ipc;
+                }
+
+                if (ipPickerCtrl != null)
+                {
+                    // Setze Scope / Ranges (nutze hier gegebene Parameter falls gesetzt)
+                    try { if (!string.IsNullOrWhiteSpace(scopeId)) ipPickerCtrl.ScopeId = scopeId; } catch { }
+                    try { if (!string.IsNullOrWhiteSpace(startRange)) ipPickerCtrl.StartRange = startRange; } catch { }
+                    try { if (!string.IsNullOrWhiteSpace(endRange)) ipPickerCtrl.EndRange = endRange; } catch { }
+
+                    // Versuche Firewall-Start/End aus Dialog-Eigenschaften oder Default
+                    try
+                    {
+                        var pFwStart = this.GetType().GetProperty("FirewallStart", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        var pFwEnd = this.GetType().GetProperty("FirewallEnd", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        var fwStart = pFwStart?.GetValue(this) as string;
+                        var fwEnd = pFwEnd?.GetValue(this) as string;
+
+                        if (!string.IsNullOrWhiteSpace(fwStart)) ipPickerCtrl.FirewallStart = fwStart;
+                        if (!string.IsNullOrWhiteSpace(fwEnd)) ipPickerCtrl.FirewallEnd = fwEnd;
+                    }
+                    catch { /* ignore */ }
+
+                    // Forward ReservationLookup-Delegate (falls vom MainForm injiziert).
+                    try
+                    {
+                        // Property
+                        var pi = this.GetType().GetProperty("ReservationLookup", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (pi != null)
+                        {
+                            var val = pi.GetValue(this);
+                            if (val is Func<string, Task<DataTable>> fn) ipPickerCtrl.ReservationLookup = fn;
+                        }
+
+                        // Field (fallback)
+                        var fi2 = this.GetType().GetField("ReservationLookup", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (fi2 != null)
+                        {
+                            var val2 = fi2.GetValue(this);
+                            if (val2 is Func<string, Task<DataTable>> fn2) ipPickerCtrl.ReservationLookup = fn2;
+                        }
+                    }
+                    catch { /* swallow: forward best-effort */ }
+                }
+                else
+                {
+                    // Optional: Debug-Log damit man weiß, dass kein ipPicker gefunden wurde
+                    try { Helpers.WriteDebugLog("InitFields: no ipPicker control found to wire ReservationLookup/ScopeId."); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                try { Helpers.WriteDebugLog("InitFields: failed to wire IpPicker: " + ex); } catch { }
+            }
+
             return this;
         }
 
         // Parameterless constructor (call designer InitializeComponent directly).
         public ConvertLeaseToReservationDialog()
         {
-            // IMPORTANT: call the designer-generated InitializeComponent directly.
-            // Do not swallow exceptions here; surface them so we can see if designer init fails.
             try
             {
                 InitializeComponent();
             }
             catch (Exception ex)
             {
-                // Make the error visible immediately so we don't end up with a silently broken dialog.
-                // Use a null owner so message is always visible even if Form isn't fully constructed.
                 try
                 {
                     MessageBox.Show(null, "FEHLER: InitializeComponent() in ConvertLeaseToReservationDialog hat eine Exception geworfen:\r\n" + ex.ToString(), "Dialog Initialisierung Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
-                catch
-                {
-                    // ignore MessageBox failures, rethrow afterwards
-                }
-
-                // Re-throw so upstream callers (MainForm) can catch and show details; prevents using a half-initialized form.
+                catch { }
                 throw;
             }
 
-            // Defensive defaults to avoid off-screen/hidden behaviour even if designer set odd values.
+            // Defensive defaults
             try { if (this.StartPosition == FormStartPosition.Manual) this.StartPosition = FormStartPosition.CenterParent; } catch { }
             try { this.ShowInTaskbar = true; } catch { }
             try { this.WindowState = FormWindowState.Normal; } catch { }
             try { this.Opacity = 1.0; } catch { }
-            try { this.TopMost = false; } catch { } // keep normal z-order by default
+            try { this.TopMost = false; } catch { }
         }
 
-        // Additional convenience overloads -> call parameterless ctor and then initialize fields
+        // Additional convenience overloads
         public ConvertLeaseToReservationDialog(string scopeId, string ip)
             : this()
         {
@@ -132,14 +195,13 @@ namespace DhcpWmiViewer
             InitFields(scopeId: scopeId, ip: ip, clientId: clientId, name: name, startRange: startRange, endRange: endRange, subnetMask: subnetMask);
         }
 
-        // catch-all overload with 9 args (some call sites used 9 args in your project)
+        // catch-all overload with 9 args
         public ConvertLeaseToReservationDialog(string scopeId, string ip, string clientId, string name, string startRange, string endRange, string subnetMask, string prefetchDescription, string dummy = "")
             : this()
         {
             InitFields(scopeId: scopeId, ip: ip, clientId: clientId, name: name, startRange: startRange, endRange: endRange, subnetMask: subnetMask, prefetchDescription: prefetchDescription);
         }
 
-        // Optionally add a public method to transfer values from the dialog to a DTO or similar.
         public (string Ip, string ClientId, string Name, string Description) GetReservationValues()
         {
             return (IpAddress, ClientId, ReservationName, ReservationDescription);

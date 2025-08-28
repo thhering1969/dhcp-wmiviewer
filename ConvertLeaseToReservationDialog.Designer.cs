@@ -1,10 +1,5 @@
 // ConvertLeaseToReservationDialog.Designer.cs
-// COMPLETE FILE — einfach kopieren & einfügen
-
-using System.Drawing;
-using System.Windows.Forms;
-
-#nullable enable
+// **KOMPLETTE DATEI** — bitte so übernehmen
 
 namespace DhcpWmiViewer
 {
@@ -13,160 +8,191 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Erforderliche Designervariable.
         /// </summary>
-        private System.ComponentModel.IContainer? components = null;
+        private System.ComponentModel.IContainer components = null;
 
-        // Controls (werden in InitializeComponent initialisiert)
-        private TextBox txtIp = null!;
-        private TextBox txtClientId = null!;
-        private TextBox txtName = null!;
-        private TextBox txtDescription = null!;
-        private CheckBox chkApplyIpChange = null!;
-        private Label lblApplyInfo = null!;
-        private Button btnOk = null!;
-        private Button btnCancel = null!;
-        // Programmatisch hinzugefügter Button (wird in Code-Behind instanziert)
-        private Button btnPickAvailable = null!;
+        private System.Windows.Forms.Label lblIp;
+        private System.Windows.Forms.TextBox txtIp;
+        private System.Windows.Forms.Button btnPickIp;
+        private System.Windows.Forms.Label lblClientId;
+        private System.Windows.Forms.TextBox txtClientId;
+        private System.Windows.Forms.Label lblName;
+        private System.Windows.Forms.TextBox txtName;
+        private System.Windows.Forms.Label lblDescription;
+        private System.Windows.Forms.TextBox txtDescription;
+        private System.Windows.Forms.Label lblHint;
+        private System.Windows.Forms.Button btnOk;
+        private System.Windows.Forms.Button btnCancel;
 
         /// <summary>
         /// Verwendete Ressourcen bereinigen.
         /// </summary>
         protected override void Dispose(bool disposing)
         {
-            if (disposing)
+            if (disposing && (components != null))
             {
-                components?.Dispose();
+                components.Dispose();
             }
             base.Dispose(disposing);
         }
 
+        #region Vom Windows Form-Designer generierter Code
+
         /// <summary>
-        /// Diese Methode wird vom Windows Form-Designer benötigt.
-        /// Der Inhalt der Methode darf nicht mit dem Code-Editor geändert werden.
+        /// Erforderliche Methode für die Designerunterstützung.
         /// </summary>
         private void InitializeComponent()
         {
-            this.AutoScaleMode = AutoScaleMode.Dpi;
-            this.Font = new Font("Segoe UI", 10f);
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MinimumSize = new Size(560, 420);
-            this.Size = new Size(720, 480);
+            this.lblIp = new System.Windows.Forms.Label();
+            this.txtIp = new System.Windows.Forms.TextBox();
+            this.btnPickIp = new System.Windows.Forms.Button();
+            this.lblClientId = new System.Windows.Forms.Label();
+            this.txtClientId = new System.Windows.Forms.TextBox();
+            this.lblName = new System.Windows.Forms.Label();
+            this.txtName = new System.Windows.Forms.TextBox();
+            this.lblDescription = new System.Windows.Forms.Label();
+            this.txtDescription = new System.Windows.Forms.TextBox();
+            this.lblHint = new System.Windows.Forms.Label();
+            this.btnOk = new System.Windows.Forms.Button();
+            this.btnCancel = new System.Windows.Forms.Button();
+            this.SuspendLayout();
+            // 
+            // lblIp
+            // 
+            this.lblIp.AutoSize = true;
+            this.lblIp.Location = new System.Drawing.Point(12, 15);
+            this.lblIp.Name = "lblIp";
+            this.lblIp.Size = new System.Drawing.Size(61, 13);
+            this.lblIp.TabIndex = 0;
+            this.lblIp.Text = "IP-Adresse:";
+            // 
+            // txtIp
+            // 
+            this.txtIp.Location = new System.Drawing.Point(120, 12);
+            this.txtIp.Name = "txtIp";
+            this.txtIp.Size = new System.Drawing.Size(260, 20);
+            this.txtIp.TabIndex = 1;
+            // 
+            // btnPickIp
+            // 
+            this.btnPickIp.Location = new System.Drawing.Point(386, 10);
+            this.btnPickIp.Name = "btnPickIp";
+            this.btnPickIp.Size = new System.Drawing.Size(90, 23);
+            this.btnPickIp.TabIndex = 2;
+            this.btnPickIp.Text = "IP wählen...";
+            this.btnPickIp.UseVisualStyleBackColor = true;
+            this.btnPickIp.Click += new System.EventHandler(this.btnPickIp_Click);
+            // 
+            // lblClientId
+            // 
+            this.lblClientId.AutoSize = true;
+            this.lblClientId.Location = new System.Drawing.Point(12, 45);
+            this.lblClientId.Name = "lblClientId";
+            this.lblClientId.Size = new System.Drawing.Size(47, 13);
+            this.lblClientId.TabIndex = 3;
+            this.lblClientId.Text = "ClientId:";
+            // 
+            // txtClientId
+            // 
+            this.txtClientId.Location = new System.Drawing.Point(120, 42);
+            this.txtClientId.Name = "txtClientId";
+            this.txtClientId.Size = new System.Drawing.Size(356, 20);
+            this.txtClientId.TabIndex = 4;
+            // 
+            // lblName
+            // 
+            this.lblName.AutoSize = true;
+            this.lblName.Location = new System.Drawing.Point(12, 75);
+            this.lblName.Name = "lblName";
+            this.lblName.Size = new System.Drawing.Size(70, 13);
+            this.lblName.TabIndex = 5;
+            this.lblName.Text = "Name / Host:";
+            // 
+            // txtName
+            // 
+            this.txtName.Location = new System.Drawing.Point(120, 72);
+            this.txtName.Name = "txtName";
+            this.txtName.Size = new System.Drawing.Size(356, 20);
+            this.txtName.TabIndex = 6;
+            // 
+            // lblDescription
+            // 
+            this.lblDescription.AutoSize = true;
+            this.lblDescription.Location = new System.Drawing.Point(12, 105);
+            this.lblDescription.Name = "lblDescription";
+            this.lblDescription.Size = new System.Drawing.Size(69, 13);
+            this.lblDescription.TabIndex = 7;
+            this.lblDescription.Text = "Beschreibung:";
+            // 
+            // txtDescription
+            // 
+            this.txtDescription.Location = new System.Drawing.Point(120, 102);
+            this.txtDescription.Multiline = true;
+            this.txtDescription.Name = "txtDescription";
+            this.txtDescription.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+            this.txtDescription.Size = new System.Drawing.Size(356, 120);
+            this.txtDescription.TabIndex = 8;
+            // 
+            // lblHint
+            // 
+            this.lblHint.AutoSize = true;
+            this.lblHint.Location = new System.Drawing.Point(12, 230);
+            this.lblHint.Name = "lblHint";
+            this.lblHint.Size = new System.Drawing.Size(355, 13);
+            this.lblHint.TabIndex = 9;
+            this.lblHint.Text = "Wenn Sie die IP geändert haben, aktivieren Sie 'IP übernehmen'. Beschreibung wir" +
+    "d";
+            // 
+            // btnOk
+            // 
+            this.btnOk.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnOk.DialogResult = System.Windows.Forms.DialogResult.OK;
+            this.btnOk.Location = new System.Drawing.Point(401, 260);
+            this.btnOk.Name = "btnOk";
+            this.btnOk.Size = new System.Drawing.Size(75, 23);
+            this.btnOk.TabIndex = 11;
+            this.btnOk.Text = "OK";
+            this.btnOk.UseVisualStyleBackColor = true;
+            // 
+            // btnCancel
+            // 
+            this.btnCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.btnCancel.Location = new System.Drawing.Point(320, 260);
+            this.btnCancel.Name = "btnCancel";
+            this.btnCancel.Size = new System.Drawing.Size(75, 23);
+            this.btnCancel.TabIndex = 10;
+            this.btnCancel.Text = "Abbrechen";
+            this.btnCancel.UseVisualStyleBackColor = true;
+            // 
+            // ConvertLeaseToReservationDialog
+            // 
+            this.AcceptButton = this.btnOk;
+            this.CancelButton = this.btnCancel;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.ClientSize = new System.Drawing.Size(494, 295);
+            this.Controls.Add(this.btnCancel);
+            this.Controls.Add(this.btnOk);
+            this.Controls.Add(this.lblHint);
+            this.Controls.Add(this.txtDescription);
+            this.Controls.Add(this.lblDescription);
+            this.Controls.Add(this.txtName);
+            this.Controls.Add(this.lblName);
+            this.Controls.Add(this.txtClientId);
+            this.Controls.Add(this.lblClientId);
+            this.Controls.Add(this.btnPickIp);
+            this.Controls.Add(this.txtIp);
+            this.Controls.Add(this.lblIp);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
+            this.Name = "ConvertLeaseToReservationDialog";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Convert Lease / Edit Reservation";
-            this.Padding = new Padding(8);
-
-            // --- Bottom area: right-aligned buttons (Cancel | OK) with robust layout ---
-            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 80, Padding = new Padding(6) };
-
-            // Right-docked FlowPanel to ensure buttons remain visible on the right
-            var rightButtons = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Right,
-                FlowDirection = FlowDirection.LeftToRight, // Cancel then OK (OK will be rightmost)
-                AutoSize = true,
-                WrapContents = false,
-                Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
-                Padding = new Padding(0),
-                Margin = new Padding(0)
-            };
-
-            // Create buttons
-            btnCancel = new Button { Text = "Abbrechen", AutoSize = true, Padding = new Padding(8), Margin = new Padding(6) };
-            btnOk = new Button { Text = "OK", AutoSize = true, Padding = new Padding(8), Margin = new Padding(6) };
-
-            // Wire click handlers robustly (set DialogResult and Close)
-            btnCancel.Click += (s, e) =>
-            {
-                try { this.DialogResult = DialogResult.Cancel; this.Close(); } catch { }
-            };
-
-            btnOk.Click += (s, e) =>
-            {
-                try { this.DialogResult = DialogResult.OK; this.Close(); } catch { }
-            };
-
-            // Add in order: Cancel (left), OK (right)
-            rightButtons.Controls.Add(btnCancel);
-            rightButtons.Controls.Add(btnOk);
-
-            bottomPanel.Controls.Add(rightButtons);
-            this.Controls.Add(bottomPanel);
-
-            // content
-            var contentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6), AutoScroll = true };
-            var content = new TableLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                ColumnCount = 2,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
-            };
-            content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
-            content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-
-            content.RowCount = 5;
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 140));
-            content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-            // IP label + row
-            var lblIp = new Label { Text = "IP-Adresse:", Anchor = AnchorStyles.Left | AnchorStyles.Top, AutoSize = true, Margin = new Padding(0, 10, 0, 0) };
-            content.Controls.Add(lblIp, 0, 0);
-
-            var ipRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, AutoSize = false };
-            ipRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            ipRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            ipRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-            txtIp = new TextBox { Dock = DockStyle.Fill, Margin = new Padding(0, 6, 8, 0) };
-            chkApplyIpChange = new CheckBox { Text = "IP übernehmen", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Margin = new Padding(0, 10, 8, 0), Visible = false };
-            lblApplyInfo = new Label { AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, ForeColor = Color.Gray, Text = "IP-Übernahme bestätigen", Padding = new Padding(6, 6, 0, 0), Cursor = Cursors.Hand, Visible = false };
-
-            ipRow.Controls.Add(txtIp, 0, 0);
-            ipRow.Controls.Add(chkApplyIpChange, 1, 0);
-            ipRow.Controls.Add(lblApplyInfo, 2, 0);
-
-            content.Controls.Add(ipRow, 1, 0);
-
-            // ClientId
-            var lblClient = new Label { Text = "ClientId:", Anchor = AnchorStyles.Left | AnchorStyles.Top, AutoSize = true, Margin = new Padding(0, 10, 0, 0) };
-            content.Controls.Add(lblClient, 0, 1);
-            txtClientId = new TextBox { Dock = DockStyle.Fill, Margin = new Padding(0, 6, 0, 0) };
-            content.Controls.Add(txtClientId, 1, 1);
-
-            // Name
-            var lblName = new Label { Text = "Name / Host:", Anchor = AnchorStyles.Left | AnchorStyles.Top, AutoSize = true, Margin = new Padding(0, 10, 0, 0) };
-            content.Controls.Add(lblName, 0, 2);
-            txtName = new TextBox { Dock = DockStyle.Fill, Margin = new Padding(0, 6, 0, 0) };
-            content.Controls.Add(txtName, 1, 2);
-
-            // Beschreibung
-            var lblDesc = new Label { Text = "Beschreibung:", Anchor = AnchorStyles.Left | AnchorStyles.Top, AutoSize = true, Margin = new Padding(0, 10, 0, 0) };
-            content.Controls.Add(lblDesc, 0, 3);
-            txtDescription = new TextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Vertical, Margin = new Padding(0, 6, 0, 0) };
-            txtDescription.Height = 120;
-            content.Controls.Add(txtDescription, 1, 3);
-
-            // hint
-            var hint = new Label
-            {
-                Text = "Wenn Sie die IP geändert haben, aktivieren Sie 'IP übernehmen'. Beschreibung wird immer übernommen.",
-                AutoSize = false,
-                Dock = DockStyle.Fill,
-                MaximumSize = new Size(0, 80),
-                Margin = new Padding(0, 8, 0, 0)
-            };
-            content.Controls.Add(hint, 1, 4);
-
-            contentPanel.Controls.Add(content);
-            this.Controls.Add(contentPanel);
-
-            // Set Accept/Cancel buttons on the form
-            this.AcceptButton = btnOk;
-            this.CancelButton = btnCancel;
+            this.ResumeLayout(false);
+            this.PerformLayout();
         }
+
+        #endregion
     }
 }
