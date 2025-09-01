@@ -51,6 +51,7 @@ namespace DhcpWmiViewer
                     {
                         ps.Commands.Clear();
                         var addCmd = ps.AddCommand("Add-DhcpServerv4Reservation")
+                                      .AddParameter("ComputerName", server)
                                       .AddParameter("ScopeId", scopeId)
                                       .AddParameter("IPAddress", ipAddress)
                                       .AddParameter("ErrorAction", "Stop");

@@ -39,5 +39,11 @@ namespace DhcpWmiViewer
         private ContextMenuStrip contextMenuLeases = null!;
         private Button btnFetchEvents = null!;
         private Button btnClearEvents = null!;
+        private NumericUpDown nudEventsLookbackDays = null!;
+        private NumericUpDown nudEventsMax = null!;
+        
+        // Tab references for dynamic text updates
+        private TabPage tabLeases = null!;
+        private TabPage tabReservations = null!;
     }
 }

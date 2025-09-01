@@ -15,7 +15,7 @@ namespace DhcpWmiViewer
                 return false;
 
             var bytes = addr.GetAddressBytes();
-            if (bytes.Length == 16) // IPv6-mapped IPv4?
+            if (bytes.Length == 16) // IPv6-mapped IPv4
             {
                 var ipv4Bytes = new byte[4];
                 Array.Copy(bytes, 12, ipv4Bytes, 0, 4);

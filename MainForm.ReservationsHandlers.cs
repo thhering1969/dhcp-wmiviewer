@@ -153,7 +153,7 @@ namespace DhcpWmiViewer
                         scopeId,
                         ip,
                         clientId,
-                        s => GetCredentialsForServer(s)!);
+                        s => GetCredentialsForServerWithTracking(s));
 
                     MessageBox.Show(this, "Reservation erfolgreich gelöscht.", "Erfolg", MessageBoxButtons.OK, MessageBoxIcon.Information);
 

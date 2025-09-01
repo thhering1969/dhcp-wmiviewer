@@ -99,7 +99,7 @@ namespace DhcpWmiViewer
                             clientId,
                             newName,
                             newDescription,
-                            s => GetCredentialsForServer(s)!   // non-null assertion to match delegate signature
+                            s => GetCredentialsForServerWithTracking(s)   // use cached credentials or integrated auth
                         );
 
                         MessageBox.Show(this, "Reservation erfolgreich geändert.", "Erfolg", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -128,7 +128,7 @@ namespace DhcpWmiViewer
                             clientId,
                             newName,
                             newDescription,
-                            s => GetCredentialsForServer(s)!
+                            s => GetCredentialsForServerWithTracking(s)
                         );
 
                         MessageBox.Show(this, "Reservation-Eigenschaften erfolgreich aktualisiert.", "Erfolg", MessageBoxButtons.OK, MessageBoxIcon.Information);

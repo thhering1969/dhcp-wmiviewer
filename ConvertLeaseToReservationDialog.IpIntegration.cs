@@ -26,7 +26,9 @@ namespace DhcpWmiViewer
         {
             try
             {
-                // Versuche, ein Feld oder Control namens btnPickAvailable zu finden
+                // Versuche, Button 'btnPickAvailable' zu finden (nur dieser wird dynamisch verdrahtet).
+                // Der Designer-Button 'btnPickIp' ist bereits über InitializeComponent verdrahtet
+                // und darf hier NICHT erneut belegt werden, sonst öffnet sich der Picker doppelt.
                 Button btn = null;
                 try
                 {
@@ -80,12 +82,16 @@ namespace DhcpWmiViewer
             // Ensure run on UI thread because ShowDialog must be called from UI thread and we update controls
             if (this.InvokeRequired)
             {
+                try { Helpers.WriteDebugLog("IP-Picker: marshaling to UI thread"); } catch { }
                 await (Task)this.Invoke(new Func<Task>(async () =>
                 {
+                    try { Helpers.WriteDebugLog("IP-Picker: entered on UI thread (invoked)"); } catch { }
                     await ShowIpPickerAndApplySelectionAsync().ConfigureAwait(false);
                 }));
                 return;
             }
+
+            try { Helpers.WriteDebugLog("IP-Picker: ShowIpPickerAndApplySelectionAsync start"); } catch { }
 
             // 1) Ermittle ScopeId (falls vorhanden)
             string scopeId = TryGetDialogStringProperty(new[] { "ScopeId", "Scope" }) ?? string.Empty;
@@ -98,8 +104,19 @@ namespace DhcpWmiViewer
             var reservedOrLeased = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                // Reservation lookup (if available)
-                var resDt = await InvokeLookupIfAvailableAsync(new[] { "ReservationLookup", "ReservationLookupForScopeAsync", "Lookup", "ReservationLookupAsync" }, scopeId).ConfigureAwait(false);
+                // Verwende bevorzugt bereits vorab geladene Tabellen aus dem Dialog (falls vorhanden)
+                DataTable? resDt = null;
+                try
+                {
+                    var pi = this.GetType().GetProperty("PrefetchedReservations", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                    resDt = (DataTable?)pi?.GetValue(this);
+                }
+                catch { }
+                if (resDt == null)
+                {
+                    // Reservation lookup (if available)
+                    resDt = await InvokeLookupIfAvailableAsync(new[] { "ReservationLookup", "ReservationLookupForScopeAsync", "Lookup", "ReservationLookupAsync" }, scopeId).ConfigureAwait(false);
+                }
                 if (resDt != null)
                 {
                     foreach (DataRow r in resDt.Rows)
@@ -109,13 +126,25 @@ namespace DhcpWmiViewer
                             if (resDt.Columns.Contains("IPAddress"))
                             {
                                 var ip = r["IPAddress"]?.ToString();
-                                if (!string.IsNullOrWhiteSpace(ip)) reservedOrLeased.Add(ip.Trim());
+                                if (!string.IsNullOrWhiteSpace(ip))
+                                {
+                                    if (IPAddress.TryParse(ip.Trim(), out var ipAddr))
+                                        reservedOrLeased.Add(ipAddr.ToString());
+                                    else
+                                        reservedOrLeased.Add(ip.Trim());
+                                }
                             }
                             else
                             {
                                 // fallback: first column
                                 var val = r.ItemArray.FirstOrDefault()?.ToString();
-                                if (!string.IsNullOrWhiteSpace(val)) reservedOrLeased.Add(val.Trim());
+                                if (!string.IsNullOrWhiteSpace(val))
+                                {
+                                    if (IPAddress.TryParse(val.Trim(), out var ipAddr))
+                                        reservedOrLeased.Add(ipAddr.ToString());
+                                    else
+                                        reservedOrLeased.Add(val.Trim());
+                                }
                             }
                         }
                         catch { /* ignore row */ }
@@ -129,8 +158,19 @@ namespace DhcpWmiViewer
 
             try
             {
-                // Lease lookup (if available)
-                var leaseDt = await InvokeLookupIfAvailableAsync(new[] { "LeaseLookup", "LeaseLookupForScopeAsync", "LeasesLookup", "LookupLeases", "LeaseLookupAsync", "FetchLeases" }, scopeId).ConfigureAwait(false);
+                // Leases: ebenfalls zuerst Prefetch prüfen
+                DataTable? leaseDt = null;
+                try
+                {
+                    var pi = this.GetType().GetProperty("PrefetchedLeases", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
+                    leaseDt = (DataTable?)pi?.GetValue(this);
+                }
+                catch { }
+                if (leaseDt == null)
+                {
+                    // Lease lookup (if available)
+                    leaseDt = await InvokeLookupIfAvailableAsync(new[] { "LeaseLookup", "LeaseLookupForScopeAsync", "LeasesLookup", "LookupLeases", "LeaseLookupAsync", "FetchLeases" }, scopeId).ConfigureAwait(false);
+                }
                 if (leaseDt != null)
                 {
                     foreach (DataRow r in leaseDt.Rows)
@@ -140,17 +180,35 @@ namespace DhcpWmiViewer
                             if (leaseDt.Columns.Contains("IPAddress"))
                             {
                                 var ip = r["IPAddress"]?.ToString();
-                                if (!string.IsNullOrWhiteSpace(ip)) reservedOrLeased.Add(ip.Trim());
+                                if (!string.IsNullOrWhiteSpace(ip))
+                                {
+                                    if (IPAddress.TryParse(ip.Trim(), out var ipAddr))
+                                        reservedOrLeased.Add(ipAddr.ToString());
+                                    else
+                                        reservedOrLeased.Add(ip.Trim());
+                                }
                             }
                             else if (leaseDt.Columns.Contains("IP"))
                             {
                                 var ip = r["IP"]?.ToString();
-                                if (!string.IsNullOrWhiteSpace(ip)) reservedOrLeased.Add(ip.Trim());
+                                if (!string.IsNullOrWhiteSpace(ip))
+                                {
+                                    if (IPAddress.TryParse(ip.Trim(), out var ipAddr))
+                                        reservedOrLeased.Add(ipAddr.ToString());
+                                    else
+                                        reservedOrLeased.Add(ip.Trim());
+                                }
                             }
                             else
                             {
                                 var val = r.ItemArray.FirstOrDefault()?.ToString();
-                                if (!string.IsNullOrWhiteSpace(val)) reservedOrLeased.Add(val.Trim());
+                                if (!string.IsNullOrWhiteSpace(val))
+                                {
+                                    if (IPAddress.TryParse(val.Trim(), out var ipAddr))
+                                        reservedOrLeased.Add(ipAddr.ToString());
+                                    else
+                                        reservedOrLeased.Add(val.Trim());
+                                }
                             }
                         }
                         catch { /* ignore row */ }
@@ -162,12 +220,21 @@ namespace DhcpWmiViewer
                 // swallow lease lookup errors
             }
 
+            // Log a short preview of reserved/leased set
+            try
+            {
+                var preview = reservedOrLeased.Take(10).ToArray();
+                Helpers.WriteDebugLog($"IP-Picker ReservedOrLeased Count={reservedOrLeased.Count} Preview=[{string.Join(", ", preview)}]{(reservedOrLeased.Count > preview.Length ? ", …" : string.Empty)}");
+            }
+            catch { }
+
             // 4) Erzeuge Liste der freien IPs im Firewall-Bereich (exklusive reservedOrLeased)
             var available = new List<string>();
             try
             {
                 var rangeStart = IPStringToUInt32(firewallStart);
                 var rangeEnd = IPStringToUInt32(firewallEnd);
+                Helpers.WriteDebugLog($"IP-Picker Range: {firewallStart} -> {firewallEnd} | start={rangeStart}, end={rangeEnd} | reservedOrLeased={reservedOrLeased.Count}");
                 if (rangeStart <= rangeEnd)
                 {
                     for (uint cur = rangeStart; cur <= rangeEnd; cur++)
@@ -179,6 +246,12 @@ namespace DhcpWmiViewer
                         if (available.Count > 50000) break;
                     }
                 }
+                try
+                {
+                    var ap = available.Take(10).ToArray();
+                    Helpers.WriteDebugLog($"IP-Picker Available Count: {available.Count} Preview=[{string.Join(", ", ap)}]{(available.Count > ap.Length ? ", …" : string.Empty)}");
+                }
+                catch { }
             }
             catch
             {
@@ -188,7 +261,9 @@ namespace DhcpWmiViewer
             // 5) Display picker dialog
             using (var picker = new IpPickerForm(available, firewallStart, firewallEnd, reservedOrLeased.Count))
             {
+                try { Helpers.WriteDebugLog($"IP-Picker: showing dialog with {available.Count} items"); } catch { }
                 var dr = picker.ShowDialog(this);
+                try { Helpers.WriteDebugLog($"IP-Picker: dialog closed with {dr}"); } catch { }
                 if (dr == DialogResult.OK)
                 {
                     var picked = picker.SelectedIp;
@@ -211,6 +286,12 @@ namespace DhcpWmiViewer
                                         ?.GetValue(this) as Label
                                      ?? this.Controls.Find("lblApplyInfo", true).FirstOrDefault() as Label;
                             if (lbl != null) lbl.Visible = true;
+
+                            try
+                            {
+                                MessageBox.Show(this, "IP ausgewählt. Bitte mit OK bestätigen, um die Reservation anzulegen.", "Hinweis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                            catch { }
                         }
                         catch
                         {

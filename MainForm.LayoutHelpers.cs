@@ -66,80 +66,110 @@ namespace DhcpWmiViewer
         /// </summary>
         private void AdjustLeasesColumnWidths()
         {
-            if (dgvLeases == null || dgvLeases.Columns.Count == 0) return;
-
-            // Schutz gegen mehrfaches/nicht vorhandenes Layout
-            if (dgvLeases.IsDisposed || dgvLeases.Disposing) return;
-
-            dgvLeases.SuspendLayout();
             try
             {
-                const int compactWidth = 80;
-                const int extraPadding = 18;
-                const int maxColumnWidth = 1200;
-                const int minColumnWidth = 40;
+                // Erweiterte Null-Checks und Schutz vor Race Conditions
+                if (dgvLeases == null || dgvLeases.IsDisposed || dgvLeases.Disposing) return;
+                if (dgvLeases.Columns == null || dgvLeases.Columns.Count == 0) return;
+                
+                // Zusätzlicher Schutz: Prüfe ob das DataGridView sichtbar und bereit ist
+                if (!dgvLeases.IsHandleCreated || !dgvLeases.Visible) return;
 
-                // ------------- 1) Bestimme bevorzugte Breiten für alle Spalten -------------
-                var preferredWidths = new int[dgvLeases.Columns.Count];
-
-                // Temporär: setze für jede Spalte AutoSizeMode = AllCells und resize, damit GetPreferredWidth gültig ist
-                for (int i = 0; i < dgvLeases.Columns.Count; i++)
+                dgvLeases.SuspendLayout();
+                try
                 {
-                    try
+                    const int compactWidth = 80;
+                    const int extraPadding = 18;
+                    const int maxColumnWidth = 1200;
+                    const int minColumnWidth = 40;
+
+                    // ------------- 1) Bestimme bevorzugte Breiten für alle Spalten -------------
+                    var preferredWidths = new int[dgvLeases.Columns.Count];
+
+                    // Temporär: setze für jede Spalte AutoSizeMode = AllCells und resize, damit GetPreferredWidth gültig ist
+                    for (int i = 0; i < dgvLeases.Columns.Count; i++)
                     {
-                        var col = dgvLeases.Columns[i];
-                        col.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
-                        // AutoResizeColumn erzwingt ein Layout-Maß
-                        try { dgvLeases.AutoResizeColumn(i, DataGridViewAutoSizeColumnMode.AllCells); } catch { }
-                        int pref = col.Width;
-                        try { pref = col.GetPreferredWidth(DataGridViewAutoSizeColumnMode.AllCells, true); } catch { /* ignore */ }
-                        preferredWidths[i] = Math.Min(maxColumnWidth, Math.Max(minColumnWidth, pref + extraPadding));
-                    }
-                    catch { preferredWidths[i] = compactWidth; }
-                }
-
-                // ------------- 2) Wende die berechneten Breiten als feste Widths an -------------
-                dgvLeases.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
-                int totalPreferred = 0;
-                for (int i = 0; i < dgvLeases.Columns.Count; i++)
-                {
-                    var col = dgvLeases.Columns[i];
-                    col.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-                    col.Width = preferredWidths[i];
-                    col.MinimumWidth = minColumnWidth;
-                    totalPreferred += col.Width;
-                }
-
-                // ------------- 3) Falls Gesamtbreite kleiner als Anzeige, fülle Rest auf -------------
-                int displayWidth = Math.Max(0, dgvLeases.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
-                if (displayWidth <= 0) displayWidth = Math.Max(displayWidth, this.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
-
-                if (totalPreferred < displayWidth)
-                {
-                    int extra = displayWidth - totalPreferred;
-                    if (extra > 0)
-                    {
-                        int targetIdx = dgvLeases.Columns.Count - 1;
-                        if (targetIdx >= 0)
+                        try
                         {
-                            var target = dgvLeases.Columns[targetIdx];
-                            int newWidth = Math.Min(maxColumnWidth, target.Width + extra);
-                            target.Width = newWidth;
+                            var col = dgvLeases.Columns[i];
+                            if (col == null) 
+                            {
+                                preferredWidths[i] = compactWidth;
+                                continue;
+                            }
+                            
+                            col.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+                            // AutoResizeColumn erzwingt ein Layout-Maß
+                            try { dgvLeases.AutoResizeColumn(i, DataGridViewAutoSizeColumnMode.AllCells); } catch { }
+                            int pref = col.Width;
+                            try { pref = col.GetPreferredWidth(DataGridViewAutoSizeColumnMode.AllCells, true); } catch { /* ignore */ }
+                            preferredWidths[i] = Math.Min(maxColumnWidth, Math.Max(minColumnWidth, pref + extraPadding));
+                        }
+                        catch { preferredWidths[i] = compactWidth; }
+                    }
+
+                    // ------------- 2) Wende die berechneten Breiten als feste Widths an -------------
+                    dgvLeases.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+                    int totalPreferred = 0;
+                    for (int i = 0; i < dgvLeases.Columns.Count; i++)
+                    {
+                        try
+                        {
+                            var col = dgvLeases.Columns[i];
+                            if (col == null) continue;
+                            
+                            col.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                            col.Width = preferredWidths[i];
+                            col.MinimumWidth = minColumnWidth;
+                            totalPreferred += col.Width;
+                        }
+                        catch { /* ignore individual column errors */ }
+                    }
+
+                    // ------------- 3) Falls Gesamtbreite kleiner als Anzeige, fülle Rest auf -------------
+                    int displayWidth = Math.Max(0, dgvLeases.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
+                    if (displayWidth <= 0) displayWidth = Math.Max(displayWidth, this.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
+
+                    if (totalPreferred < displayWidth)
+                    {
+                        int extra = displayWidth - totalPreferred;
+                        if (extra > 0)
+                        {
+                            int targetIdx = dgvLeases.Columns.Count - 1;
+                            if (targetIdx >= 0)
+                            {
+                                var target = dgvLeases.Columns[targetIdx];
+                                if (target != null)
+                                {
+                                    int newWidth = Math.Min(maxColumnWidth, target.Width + extra);
+                                    target.Width = newWidth;
+                                }
+                            }
                         }
                     }
+
+                    // ------------- 4) Scrollbar Entscheidung -------------
+                    try
+                    {
+                        int totalWidth = dgvLeases.Columns.Cast<DataGridViewColumn>().Sum(cc => cc?.Width ?? 0);
+                        dgvLeases.ScrollBars = (totalWidth > displayWidth) ? ScrollBars.Both : ScrollBars.Vertical;
+                    }
+                    catch { /* ignore scrollbar calculation errors */ }
+
+                    // final refresh
+                    dgvLeases.Refresh();
+                    dgvLeases.PerformLayout();
                 }
-
-                // ------------- 4) Scrollbar Entscheidung -------------
-                int totalWidth = dgvLeases.Columns.Cast<DataGridViewColumn>().Sum(cc => cc.Width);
-                dgvLeases.ScrollBars = (totalWidth > displayWidth) ? ScrollBars.Both : ScrollBars.Vertical;
-
-                // final refresh
-                dgvLeases.Refresh();
-                dgvLeases.PerformLayout();
+                finally
+                {
+                    try { dgvLeases.ResumeLayout(true); } catch { /* ignore resume layout errors */ }
+                }
             }
-            finally
+            catch (Exception ex)
             {
-                dgvLeases.ResumeLayout(true);
+                // Log the error for debugging but don't crash the application
+                System.Diagnostics.Debug.WriteLine($"AdjustLeasesColumnWidths error: {ex.Message}");
+                try { UpdateStatus("Spaltenbreiten-Anpassung übersprungen."); } catch { }
             }
         }
 
@@ -175,6 +205,29 @@ namespace DhcpWmiViewer
             catch
             {
                 // swallow
+            }
+        }
+
+        /// <summary>
+        /// DataError event handler for leases DataGridView to prevent crashes from column mismatches
+        /// </summary>
+        private void DgvLeases_DataError(object? sender, DataGridViewDataErrorEventArgs e)
+        {
+            try
+            {
+                // Log the error for debugging
+                System.Diagnostics.Debug.WriteLine($"DataGridView DataError: {e.Exception?.Message} at Row={e.RowIndex}, Column={e.ColumnIndex}");
+                
+                // Suppress the error dialog by setting Cancel to true
+                e.Cancel = true;
+                
+                // Optionally show a user-friendly message in the status bar
+                UpdateStatus($"Datenfehler in Zeile {e.RowIndex + 1} behoben.");
+            }
+            catch
+            {
+                // If anything goes wrong in the error handler, just suppress the error
+                e.Cancel = true;
             }
         }
 

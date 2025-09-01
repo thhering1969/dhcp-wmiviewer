@@ -42,12 +42,102 @@ namespace DhcpWmiViewer
             });
         }
 
-        public static Task<DataTable> QueryLeasesAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials)
+        public static Task<DataTable> QueryLeasesAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials, int? limit = null)
         {
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
                 ps.AddCommand("Get-DhcpServerv4Lease").AddParameter("ScopeId", scopeId);
-            }, dt => { }, isDynamic: true);
+                ps.AddCommand("Select-Object").AddParameter("Property", new[] { 
+                    "IPAddress", "ClientId", "ClientType", "HostName", "Description", 
+                    "AddressState", "LeaseExpiryTime", "ScopeId", "ServerIP", "PSComputerName",
+                    "CimClass", "CimInstanceProperties", "CimSystemProperties"
+                });
+                if (limit.HasValue)
+                {
+                    ps.AddCommand("Select-Object").AddParameter("First", limit.Value);
+                }
+            }, dt =>
+            {
+                dt.Columns.Add("IPAddress", typeof(string));
+                dt.Columns.Add("ClientId", typeof(string));
+                dt.Columns.Add("ClientType", typeof(string));
+                dt.Columns.Add("HostName", typeof(string));
+                dt.Columns.Add("Description", typeof(string));
+                dt.Columns.Add("AddressState", typeof(string));
+                dt.Columns.Add("LeaseExpiryTime", typeof(string));
+                dt.Columns.Add("ScopeId", typeof(string));
+                dt.Columns.Add("ServerIP", typeof(string));
+                dt.Columns.Add("PSComputerName", typeof(string));
+                dt.Columns.Add("CimClass", typeof(string));
+                dt.Columns.Add("CimInstanceProperties", typeof(string));
+                dt.Columns.Add("CimSystemProperties", typeof(string));
+            }, isDynamic: false);
+        }
+
+        /// <summary>
+        /// Query all leases for a scope without the First 5 limitation
+        /// </summary>
+        public static Task<DataTable> QueryLeasesAsyncUnlimited(string server, string scopeId, Func<string, PSCredential?> getCredentials)
+        {
+            return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
+            {
+                ps.AddCommand("Get-DhcpServerv4Lease").AddParameter("ScopeId", scopeId);
+                ps.AddCommand("Select-Object").AddParameter("Property", new[] { 
+                    "IPAddress", "ClientId", "ClientType", "HostName", "Description", 
+                    "AddressState", "LeaseExpiryTime", "ScopeId", "ServerIP", "PSComputerName",
+                    "CimClass", "CimInstanceProperties", "CimSystemProperties"
+                });
+            }, dt =>
+            {
+                dt.Columns.Add("IPAddress", typeof(string));
+                dt.Columns.Add("ClientId", typeof(string));
+                dt.Columns.Add("ClientType", typeof(string));
+                dt.Columns.Add("HostName", typeof(string));
+                dt.Columns.Add("Description", typeof(string));
+                dt.Columns.Add("AddressState", typeof(string));
+                dt.Columns.Add("LeaseExpiryTime", typeof(string));
+                dt.Columns.Add("ScopeId", typeof(string));
+                dt.Columns.Add("ServerIP", typeof(string));
+                dt.Columns.Add("PSComputerName", typeof(string));
+                dt.Columns.Add("CimClass", typeof(string));
+                dt.Columns.Add("CimInstanceProperties", typeof(string));
+                dt.Columns.Add("CimSystemProperties", typeof(string));
+            }, isDynamic: false);
+        }
+
+        /// <summary>
+        /// Very fast query - only essential data for maximum speed
+        /// </summary>
+        public static Task<DataTable> QueryLeasesFastAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials, int? limit = null)
+        {
+            return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
+            {
+                ps.AddCommand("Get-DhcpServerv4Lease").AddParameter("ScopeId", scopeId);
+                ps.AddCommand("Select-Object").AddParameter("Property", new[] { 
+                    "IPAddress", "ClientId", "HostName", "AddressState"
+                });
+                if (limit.HasValue)
+                {
+                    ps.AddCommand("Select-Object").AddParameter("First", limit.Value);
+                }
+            }, dt =>
+            {
+                // Only essential columns
+                dt.Columns.Add("IPAddress", typeof(string));
+                dt.Columns.Add("ClientId", typeof(string));
+                dt.Columns.Add("HostName", typeof(string));
+                dt.Columns.Add("AddressState", typeof(string));
+                // Add empty columns for compatibility
+                dt.Columns.Add("ClientType", typeof(string));
+                dt.Columns.Add("Description", typeof(string));
+                dt.Columns.Add("LeaseExpiryTime", typeof(string));
+                dt.Columns.Add("ScopeId", typeof(string));
+                dt.Columns.Add("ServerIP", typeof(string));
+                dt.Columns.Add("PSComputerName", typeof(string));
+                dt.Columns.Add("CimClass", typeof(string));
+                dt.Columns.Add("CimInstanceProperties", typeof(string));
+                dt.Columns.Add("CimSystemProperties", typeof(string));
+            }, isDynamic: false);
         }
     }
 }

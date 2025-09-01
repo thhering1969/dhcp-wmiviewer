@@ -18,6 +18,7 @@ using System.Management.Automation;
 using System.Linq;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 
 namespace DhcpWmiViewer
 {
@@ -94,6 +95,25 @@ namespace DhcpWmiViewer
         private DataTable leaseTable = new DataTable();
 
         // ------------------------
+        // Configuration options
+        // ------------------------
+        
+        /// <summary>
+        /// When true, lease refresh will use limited queries (first 100) for better performance.
+        /// When false, lease refresh will get all leases (slower but complete).
+        /// Always set to true for fastest performance.
+        /// </summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool UseFastLeaseRefresh { get; set; } = true;
+        
+        /// <summary>
+        /// Number of leases to fetch when using fast refresh mode
+        /// Very limited for maximum performance
+        /// </summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public int FastLeaseRefreshLimit { get; set; } = 10;
+
+        // ------------------------
         // DataTable Schema initialisieren
         // ------------------------
         private void InitDataTableSchema()
@@ -125,10 +145,17 @@ namespace DhcpWmiViewer
                 leaseTable = new DataTable();
                 leaseTable.Columns.Add("IPAddress", typeof(string));
                 leaseTable.Columns.Add("ClientId", typeof(string));
+                leaseTable.Columns.Add("ClientType", typeof(string));
                 leaseTable.Columns.Add("HostName", typeof(string));
-                leaseTable.Columns.Add("Description", typeof(string)); // Description rechts neben HostName
+                leaseTable.Columns.Add("Description", typeof(string));
                 leaseTable.Columns.Add("AddressState", typeof(string));
                 leaseTable.Columns.Add("LeaseExpiryTime", typeof(string));
+                leaseTable.Columns.Add("ScopeId", typeof(string));
+                leaseTable.Columns.Add("ServerIP", typeof(string));
+                leaseTable.Columns.Add("PSComputerName", typeof(string));
+                leaseTable.Columns.Add("CimClass", typeof(string));
+                leaseTable.Columns.Add("CimInstanceProperties", typeof(string));
+                leaseTable.Columns.Add("CimSystemProperties", typeof(string));
             }
             catch
             {
@@ -169,10 +196,161 @@ namespace DhcpWmiViewer
         // ------------------------
         // Credentials helpers
         // ------------------------
+        
+        // Cache für Credentials pro Server
+        private readonly Dictionary<string, PSCredential?> _credentialCache = new Dictionary<string, PSCredential?>();
+        private readonly HashSet<string> _integratedAuthServers = new HashSet<string>();
+        
         public PSCredential? GetCredentialsForServer(string server)
         {
-            // Return null to use integrated auth by default.
-            return null;
+            try
+            {
+                // Integrierte Auth für lokalen Server (".")
+                if (string.IsNullOrWhiteSpace(server) || server.Trim() == ".")
+                    return null;
+
+                var normalizedServer = server.Trim().ToLowerInvariant();
+                
+                // Wenn integrierte Auth für diesen Server bereits erfolgreich war, keine Credentials nötig
+                if (_integratedAuthServers.Contains(normalizedServer))
+                    return null;
+                
+                // Wenn bereits Credentials für diesen Server gecacht sind, diese verwenden
+                if (_credentialCache.TryGetValue(normalizedServer, out var cachedCred))
+                    return cachedCred;
+
+                // Für Remote-Server: Anmeldedaten abfragen (einmal pro Server)
+                return AskForCredentials(server);
+            }
+            catch { return null; }
+        }
+        
+        /// <summary>
+        /// Spezielle Credential-Provider-Funktion, die verfolgt, ob integrierte Authentifizierung erfolgreich war.
+        /// Diese Funktion wird nur aufgerufen, wenn der erste Versuch ohne Credentials fehlgeschlagen ist.
+        /// Das bedeutet, wenn diese Funktion NICHT aufgerufen wird, war integrierte Auth erfolgreich.
+        /// </summary>
+        public PSCredential? GetCredentialsForServerWithTracking(string server)
+        {
+            try
+            {
+                // Integrierte Auth für lokalen Server (".")
+                if (string.IsNullOrWhiteSpace(server) || server.Trim() == ".")
+                    return null;
+
+                var normalizedServer = server.Trim().ToLowerInvariant();
+                
+                // Wenn integrierte Auth für diesen Server bereits erfolgreich war, keine Credentials nötig
+                if (_integratedAuthServers.Contains(normalizedServer))
+                    return null;
+                
+                // Wenn bereits Credentials für diesen Server gecacht sind, diese verwenden
+                if (_credentialCache.TryGetValue(normalizedServer, out var cachedCred))
+                    return cachedCred;
+
+                // Wenn wir hier ankommen, bedeutet das, dass integrierte Auth fehlgeschlagen ist
+                // und wir Credentials brauchen. Für Remote-Server: Anmeldedaten abfragen
+                return AskForCredentials(server);
+            }
+            catch { return null; }
+        }
+        
+        /// <summary>
+        /// Wrapper für DhcpManager-Aufrufe, der automatisch integrierte Authentifizierung erkennt
+        /// </summary>
+        public async Task<T> ExecuteWithIntegratedAuthDetection<T>(string server, Func<string, Func<string, PSCredential?>, Task<T>> operation)
+        {
+            var normalizedServer = server.Trim().ToLowerInvariant();
+            bool credentialCallbackWasCalled = false;
+            
+            // Credential-Provider, der verfolgt, ob er aufgerufen wurde
+            PSCredential? CredentialProviderWithTracking(string s)
+            {
+                credentialCallbackWasCalled = true;
+                return GetCredentialsForServerWithTracking(s);
+            }
+            
+            try
+            {
+                var result = await operation(server, CredentialProviderWithTracking);
+                
+                // Wenn der Credential-Callback NICHT aufgerufen wurde, war integrierte Auth erfolgreich
+                if (!credentialCallbackWasCalled && !string.IsNullOrWhiteSpace(server) && server.Trim() != ".")
+                {
+                    MarkServerAsIntegratedAuth(server);
+                }
+                
+                return result;
+            }
+            catch
+            {
+                // Bei Fehlern keine integrierte Auth markieren
+                throw;
+            }
+        }
+        
+        /// <summary>
+        /// Wrapper für parallele DhcpManager-Aufrufe (Reservations + Leases)
+        /// </summary>
+        public async Task<(DataTable reservations, DataTable leases)> ExecuteReservationsAndLeasesWithIntegratedAuthDetection(
+            string server, string scopeId, int? leaseLimit = null)
+        {
+            var normalizedServer = server.Trim().ToLowerInvariant();
+            bool credentialCallbackWasCalled = false;
+            
+            // Credential-Provider, der verfolgt, ob er aufgerufen wurde
+            PSCredential? CredentialProviderWithTracking(string s)
+            {
+                credentialCallbackWasCalled = true;
+                return GetCredentialsForServerWithTracking(s);
+            }
+            
+            try
+            {
+                // Starte beide Abfragen parallel
+                var tRes = DhcpManager.QueryReservationsAsync(server, scopeId, CredentialProviderWithTracking);
+                var tLea = DhcpManager.QueryLeasesAsync(server, scopeId, CredentialProviderWithTracking, leaseLimit);
+                
+                // Warte auf beide Ergebnisse
+                var resTable = await tRes;
+                var leaTable = await tLea;
+                
+                // Wenn der Credential-Callback NICHT aufgerufen wurde, war integrierte Auth erfolgreich
+                if (!credentialCallbackWasCalled && !string.IsNullOrWhiteSpace(server) && server.Trim() != ".")
+                {
+                    MarkServerAsIntegratedAuth(server);
+                }
+                
+                return (resTable ?? new DataTable(), leaTable ?? new DataTable());
+            }
+            catch
+            {
+                // Bei Fehlern keine integrierte Auth markieren
+                throw;
+            }
+        }
+        
+        /// <summary>
+        /// Markiert einen Server als erfolgreich mit integrierter Authentifizierung verbunden
+        /// </summary>
+        public void MarkServerAsIntegratedAuth(string server)
+        {
+            if (!string.IsNullOrWhiteSpace(server) && server.Trim() != ".")
+            {
+                var normalizedServer = server.Trim().ToLowerInvariant();
+                _integratedAuthServers.Add(normalizedServer);
+                // Entferne gecachte Credentials, da integrierte Auth funktioniert
+                _credentialCache.Remove(normalizedServer);
+            }
+        }
+        
+        /// <summary>
+        /// Löscht alle gecachten Credentials und integrierte Auth Markierungen
+        /// </summary>
+        public void ClearCredentialCache()
+        {
+            _credentialCache.Clear();
+            _integratedAuthServers.Clear();
         }
 
         private PSCredential? AskForCredentials(string server)
@@ -182,6 +360,13 @@ namespace DhcpWmiViewer
             {
                 if (this.InvokeRequired) this.Invoke(new Action(() => result = AskForCredentialsInternal(server)));
                 else result = AskForCredentialsInternal(server);
+                
+                // Cache das Ergebnis (auch null, um zu vermeiden, dass erneut gefragt wird)
+                if (!string.IsNullOrWhiteSpace(server))
+                {
+                    var normalizedServer = server.Trim().ToLowerInvariant();
+                    _credentialCache[normalizedServer] = result;
+                }
             }
             catch { result = null; }
             return result;
@@ -211,10 +396,18 @@ namespace DhcpWmiViewer
             var server = ".";
             try
             {
-                if (this.Controls.Find("txtServer", true).FirstOrDefault() is TextBox tb && !string.IsNullOrWhiteSpace(tb.Text))
-                    server = tb.Text.Trim();
-                else if (this.Controls.Find("cmbDiscoveredServers", true).FirstOrDefault() is ComboBox cb && cb.SelectedItem != null)
-                    server = cb.SelectedItem.ToString() ?? ".";
+                // Verwende direkt die Felder (nicht Controls.Find, da Name-Eigenschaften nicht gesetzt sind)
+                if (cmbDiscoveredServers != null)
+                {
+                    if (cmbDiscoveredServers.SelectedItem != null)
+                        server = cmbDiscoveredServers.SelectedItem.ToString() ?? ".";
+                    else if (!string.IsNullOrWhiteSpace(cmbDiscoveredServers.Text))
+                        server = cmbDiscoveredServers.Text.Trim();
+                }
+                if ((server == "." || string.IsNullOrWhiteSpace(server)) && txtServer != null && !string.IsNullOrWhiteSpace(txtServer.Text))
+                {
+                    server = txtServer.Text.Trim();
+                }
             }
             catch { /* defensive */ }
             return server;
@@ -240,14 +433,40 @@ namespace DhcpWmiViewer
             {
                 if (string.IsNullOrWhiteSpace(scopeId)) return;
                 var server = GetServerNameOrDefault();
-                var rt = await DhcpManager.QueryReservationsAsync(server, scopeId, GetCredentialsForServer);
+                // Reads: verwende gecachte Credentials oder integrierte Auth (kein neuer Prompt)
+                var rt = await DhcpManager.QueryReservationsAsync(server, scopeId, s => 
+                {
+                    // Für Refresh-Operationen: nur bereits bekannte Credentials verwenden, keine neuen Prompts
+                    var normalizedServer = s.Trim().ToLowerInvariant();
+                    if (_integratedAuthServers.Contains(normalizedServer))
+                        return null; // Integrierte Auth verwenden
+                    if (_credentialCache.TryGetValue(normalizedServer, out var cachedCred))
+                        return cachedCred; // Gecachte Credentials verwenden
+                    return null; // Fallback: integrierte Auth versuchen
+                });
                 reservationTable = rt ?? new DataTable();
 
                 // bindingReservations ist in Controls-Partial deklariert
                 if (bindingReservations != null) bindingReservations.DataSource = reservationTable;
                 if (dgvReservations != null) dgvReservations.DataSource = bindingReservations;
+                
+                // Update tab text with reservation count
+                UpdateReservationsTabText();
             }
             catch { /* swallow */ }
+        }
+        
+        private void UpdateReservationsTabText()
+        {
+            try
+            {
+                if (tabReservations != null)
+                {
+                    var count = reservationTable?.Rows.Count ?? 0;
+                    tabReservations.Text = $"Reservations ({count})";
+                }
+            }
+            catch { /* ignore */ }
         }
 
         private async Task TryInvokeRefreshLeases(string scopeId)
@@ -256,24 +475,150 @@ namespace DhcpWmiViewer
             {
                 if (string.IsNullOrWhiteSpace(scopeId)) return;
                 var server = GetServerNameOrDefault();
-                var lt = await DhcpManager.QueryLeasesAsync(server, scopeId, GetCredentialsForServer);
-                if (lt == null) return;
-
-                leaseTable = lt;
-
-                // Heuristische Korrektur: implementiert in MainForm.DataHelpers.cs
-                try { FixServerIpValues(leaseTable); } catch { /* ignore */ }
-
-                // Bind
-                if (bindingLeases != null) bindingLeases.DataSource = leaseTable;
-                if (dgvLeases != null)
+                
+                // Quick feedback without blocking
+                UpdateStatus("Leases werden aktualisiert...");
+                pb.Style = ProgressBarStyle.Marquee;
+                pb.Visible = true;
+                
+                try
                 {
-                    dgvLeases.DataSource = bindingLeases;
-                    // Format ServerIP cells after bind (UI helper in Layout partial)
-                    try { FormatServerIpCellsAfterBind(); } catch { /* ignore */ }
+                    // Use the same method as reservations refresh (no credential prompts)
+                    var queryTask = DhcpManager.QueryLeasesAsync(server, scopeId, s => 
+                    {
+                        // Für Refresh-Operationen: nur bereits bekannte Credentials verwenden, keine neuen Prompts
+                        var normalizedServer = s.Trim().ToLowerInvariant();
+                        if (_integratedAuthServers.Contains(normalizedServer))
+                            return null; // Integrierte Auth verwenden
+                        if (_credentialCache.TryGetValue(normalizedServer, out var cachedCred))
+                            return cachedCred; // Gecachte Credentials verwenden
+                        return null; // Fallback: integrierte Auth versuchen
+                    }, 5);
+                    UpdateStatus("Leases werden abgerufen...");
+                    
+                    // Same timeout as scope selection
+                    var timeoutMs = 5000; // 5s timeout
+                    var completed = await Task.WhenAny(queryTask, Task.Delay(timeoutMs)).ConfigureAwait(false);
+                    
+                    if (!ReferenceEquals(completed, queryTask))
+                    {
+                        UpdateStatus("Lease-Aktualisierung abgebrochen (Timeout).");
+                        return;
+                    }
+                    
+                    var lt = await queryTask.ConfigureAwait(false);
+                    
+                    if (lt != null)
+                    {
+                        leaseTable = lt;
+                        
+                        // Safely update DataGridView to prevent rowIndex errors
+                        if (dgvLeases != null)
+                        {
+                            try
+                            {
+                                dgvLeases.ClearSelection();
+                                dgvLeases.DataSource = null;
+                                if (bindingLeases != null) bindingLeases.DataSource = leaseTable;
+                                dgvLeases.DataSource = bindingLeases;
+                            }
+                            catch (Exception ex)
+                            {
+                                // Log error but don't crash
+                                System.Diagnostics.Debug.WriteLine($"DataGridView update error: {ex.Message}");
+                            }
+                        }
+                        
+                        UpdateLeasesTabText();
+                        
+                        var leaseCount = leaseTable.Rows.Count;
+                        UpdateStatus($"Leases aktualisiert: {leaseCount} Einträge.");
+                    }
+                    else
+                    {
+                        UpdateStatus("Keine Leases gefunden.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UpdateStatus($"Fehler: {ex.Message}");
                 }
             }
-            catch { /* swallow */ }
+            catch (Exception ex)
+            {
+                UpdateStatus($"Fehler: {ex.Message}");
+            }
+            finally
+            {
+                pb.Visible = false;
+            }
+        }
+        
+        private void UpdateLeasesUI(dynamic result)
+        {
+            try
+            {
+                // Update UI based on result
+                if (result.Success && result.Data != null)
+                {
+                    leaseTable = result.Data;
+                    
+                    // Safely update DataGridView to prevent rowIndex errors
+                    if (dgvLeases != null)
+                    {
+                        try
+                        {
+                            dgvLeases.ClearSelection();
+                            dgvLeases.DataSource = null;
+                            if (bindingLeases != null) bindingLeases.DataSource = leaseTable;
+                            dgvLeases.DataSource = bindingLeases;
+                        }
+                        catch (Exception ex)
+                        {
+                            // Log error but don't crash
+                            System.Diagnostics.Debug.WriteLine($"DataGridView update error: {ex.Message}");
+                        }
+                    }
+                    
+                    UpdateLeasesTabText();
+                    
+                    var leaseCount = leaseTable.Rows.Count;
+                    UpdateStatus($"Leases aktualisiert: {leaseCount} Einträge.");
+                }
+                else if (result.Message == "Timeout")
+                {
+                    UpdateStatus("Lease-Aktualisierung abgebrochen (zu langsam).");
+                }
+                else
+                {
+                    UpdateStatus($"Fehler: {result.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateStatus($"Fehler: {ex.Message}");
+            }
+            finally
+            {
+                pb.Visible = false;
+            }
+        }
+        
+        private void UpdateLeasesTabText()
+        {
+            try
+            {
+                if (tabLeases != null)
+                {
+                    var count = leaseTable?.Rows.Count ?? 0;
+                    tabLeases.Text = $"Leases ({count})";
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                System.Diagnostics.Debug.WriteLine($"UpdateLeasesTabText error: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -285,7 +630,17 @@ namespace DhcpWmiViewer
             try
             {
                 var server = GetServerNameOrDefault();
-                var dt = await DhcpManager.QueryReservationsAsync(server, scopeId, GetCredentialsForServer);
+                // Reads: verwende gecachte Credentials oder integrierte Auth (kein neuer Prompt)
+                var dt = await DhcpManager.QueryReservationsAsync(server, scopeId, s => 
+                {
+                    // Für Lookup-Operationen: nur bereits bekannte Credentials verwenden, keine neuen Prompts
+                    var normalizedServer = s.Trim().ToLowerInvariant();
+                    if (_integratedAuthServers.Contains(normalizedServer))
+                        return null; // Integrierte Auth verwenden
+                    if (_credentialCache.TryGetValue(normalizedServer, out var cachedCred))
+                        return cachedCred; // Gecachte Credentials verwenden
+                    return null; // Fallback: integrierte Auth versuchen
+                });
                 return dt ?? new DataTable();
             }
             catch { return new DataTable(); }
@@ -335,21 +690,21 @@ namespace DhcpWmiViewer
                                     try
                                     {
                                         var created = Delegate.CreateDelegate(pars[3].ParameterType, this, methodInfo);
-                                        credDelegate = created ?? (object)new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                                        credDelegate = created ?? (object)new Func<string, PSCredential?>(s => GetCredentialsForServerWithTracking(s));
                                     }
                                     catch
                                     {
-                                        credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                                        credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServerWithTracking(s));
                                     }
                                 }
                                 else
                                 {
-                                    credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                                    credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServerWithTracking(s));
                                 }
                             }
                             catch
                             {
-                                credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServer(s));
+                                credDelegate = new Func<string, PSCredential?>(s => GetCredentialsForServerWithTracking(s));
                             }
 
                             // use object[] (not object?[]) to avoid nullable-array mismatch warnings
@@ -361,7 +716,7 @@ namespace DhcpWmiViewer
                                  pars[2].ParameterType == typeof(string) &&
                                  (pars[3].ParameterType == typeof(PSCredential) || pars[3].ParameterType == typeof(object)))
                         {
-                            var cred = GetCredentialsForServer(server);
+                            var cred = GetCredentialsForServerWithTracking(server);
                             invokeResult = mi.Invoke(null, new object[] { server, scopeId, ip, cred });
                         }
                         else if (pars.Length == 3 &&

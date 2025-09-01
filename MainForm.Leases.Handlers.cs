@@ -58,6 +58,11 @@ namespace DhcpWmiViewer
 
                 // server name
                 var server = GetServerNameOrDefault();
+                if (string.IsNullOrWhiteSpace(server) || server == "." || server.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase) || server.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show(this, "Bitte zuerst einen entfernten DHCP-Server auswählen (z.B. vmdc3/vmdc4).", "Server fehlt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
                 // Decide firewall pool range: (your requirement: 192.168.116.180 - 192.168.116.254)
                 // You can compute this dynamically if needed; for now set constants (or fetch from config).
@@ -90,7 +95,7 @@ namespace DhcpWmiViewer
                 // ReservationLookupAdapter.CreateLookup captures server and credential-provider.
                 try
                 {
-                    var reservationLookup = ReservationLookupAdapter.CreateLookup(server, s => GetCredentialsForServer(s)!);
+                    var reservationLookup = ReservationLookupAdapter.CreateLookup(server, s => null);
                     TryAssignDelegatePropertyIfExists(dlg, "ReservationLookup", reservationLookup);
                 }
                 catch
@@ -98,11 +103,13 @@ namespace DhcpWmiViewer
                     // ignore if assignment fails (dialog still works with prefetched data)
                 }
 
-                // If you have a prefetched reservations table available in the form, pass it to dialog
+                // If you have a prefetched reservations/leases table available in the form, pass it to dialog
                 try
                 {
                     if (reservationTable != null && reservationTable.Rows.Count > 0)
                         TrySetPropertyIfExists(dlg, "PrefetchedReservations", reservationTable);
+                    if (leaseTable != null && leaseTable.Rows.Count > 0)
+                        TrySetPropertyIfExists(dlg, "PrefetchedLeases", leaseTable);
                 }
                 catch { /* swallow */ }
 
@@ -114,9 +121,62 @@ namespace DhcpWmiViewer
                 if (dr == DialogResult.OK)
                 {
                     Helpers.WriteDebugLog("TRACE: ConvertLeaseToReservationDialog returned OK");
-                    // Optionally refresh reservations / leases after create
-                    await TryInvokeRefreshReservations(scopeId);
-                    await TryInvokeRefreshLeases(scopeId);
+
+                    try
+                    {
+                        // Werte ggf. aus dem Dialog lesen (falls der Nutzer sie geändert hat)
+                        string pickedIp = ReadDialogStringProperty(dlg, new[] { "IpAddress", "IPAddress" }) ?? ip;
+                        string pickedClientId = ReadDialogStringProperty(dlg, new[] { "ClientId", "Client" }) ?? clientId;
+                        string pickedName = ReadDialogStringProperty(dlg, new[] { "HostName", "Name" }) ?? hostName;
+                        string pickedDesc = ReadDialogStringProperty(dlg, new[] { "Description" }) ?? string.Empty;
+
+                        if (!string.IsNullOrWhiteSpace(pickedIp))
+                        {
+                            var srv = server; // reuse resolved server (e.g., vmdc3/vmdc4), avoid fallback to local host
+                            // Hard-guard: wenn trotzdem '.' o.ä., dann aus cmb/text neu lesen
+                            if (string.IsNullOrWhiteSpace(srv) || srv == "." || srv.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase) || srv.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    if (cmbDiscoveredServers != null)
+                                    {
+                                        if (cmbDiscoveredServers.SelectedItem != null)
+                                            srv = cmbDiscoveredServers.SelectedItem.ToString() ?? srv;
+                                        else if (!string.IsNullOrWhiteSpace(cmbDiscoveredServers.Text))
+                                            srv = cmbDiscoveredServers.Text.Trim();
+                                    }
+                                    if ((string.IsNullOrWhiteSpace(srv) || srv == ".") && txtServer != null && !string.IsNullOrWhiteSpace(txtServer.Text))
+                                        srv = txtServer.Text.Trim();
+                                }
+                                catch { }
+                            }
+                            Helpers.WriteDebugLog($"CREATE reservation: srv={srv}, scopeId={scopeId}, ip={pickedIp}, clientId={pickedClientId}");
+                            // Blockierender Warte-Dialog bis Aktion fertig/Fehler
+                            await WaitDialog.RunAsync(this, "Reservation wird angelegt…", async () =>
+                            {
+                                await DhcpManager.CreateReservationFromLeaseAsync(srv, scopeId, pickedIp, pickedClientId, pickedName, pickedDesc, s => GetCredentialsForServerWithTracking(s));
+                            });
+
+                            await WaitDialog.RunAsync(this, "Aktualisiere Ansicht…", async () =>
+                            {
+                                await TryInvokeRefreshReservations(scopeId);
+                                await TryInvokeRefreshLeases(scopeId);
+                            });
+
+                            // Log GUI event to EventLog (remote) after successful conversion
+                            try
+                            {
+                                await LogGuiEventAsync("ConvertLeaseToReservation", scopeId, pickedIp, $"ClientId={pickedClientId};Name={pickedName}");
+                            }
+                            catch { /* non-fatal */ }
+
+                            MessageBox.Show(this, $"Reservation für {pickedIp} erstellt.", "Erfolg", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    }
+                    catch (Exception exCreate)
+                    {
+                        MessageBox.Show(this, "Reservation konnte nicht erstellt werden:\r\n" + exCreate.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
                 else
                 {
@@ -131,5 +191,32 @@ namespace DhcpWmiViewer
         }
 
         // --- other handlers and helper methods remain unchanged in this partial ---
+
+        private static string? ReadDialogStringProperty(object dlg, string[] names)
+        {
+            if (dlg == null || names == null || names.Length == 0) return null;
+            try
+            {
+                var t = dlg.GetType();
+                foreach (var n in names)
+                {
+                    if (string.IsNullOrWhiteSpace(n)) continue;
+                    var pi = t.GetProperty(n, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.IgnoreCase);
+                    if (pi != null)
+                    {
+                        var v = pi.GetValue(dlg);
+                        if (v != null) return v.ToString();
+                    }
+                    var fi = t.GetField(n, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.IgnoreCase);
+                    if (fi != null)
+                    {
+                        var v = fi.GetValue(dlg);
+                        if (v != null) return v.ToString();
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
     }
 }

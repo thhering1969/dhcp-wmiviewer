@@ -76,7 +76,7 @@ namespace DhcpWmiViewer
 
             try
             {
-                var dt = await DhcpManager.QueryScopesAsync(server, GetCredentialsForServer);
+                var dt = await ExecuteWithIntegratedAuthDetection(server, DhcpManager.QueryScopesAsync);
                 currentTable = dt;
                 binding.DataSource = currentTable;
                 dgv.DataSource = binding;
@@ -105,6 +105,9 @@ namespace DhcpWmiViewer
             {
                 reservationTable.Rows.Clear();
                 leaseTable.Rows.Clear();
+                // Reset tab texts
+                UpdateReservationsTabText();
+                UpdateLeasesTabText();
                 return;
             }
 
@@ -126,24 +129,23 @@ namespace DhcpWmiViewer
                 pb.Visible = true;
                 UpdateStatus($"Querying reservations & leases for {scopeId} on {server}...");
 
-                // start both queries in parallel
-                var tRes = DhcpManager.QueryReservationsAsync(server, scopeId, GetCredentialsForServer);
-                var tLea = DhcpManager.QueryLeasesAsync(server, scopeId, GetCredentialsForServer);
-
-                // await results (tasks were started already so this keeps parallelism)
-                var resTable = await tRes;
-                var leaTable = await tLea;
+                // start both queries in parallel with integrated auth detection
+                var (resTable, leaTable) = await ExecuteReservationsAndLeasesWithIntegratedAuthDetection(server, scopeId, 5);
 
                 // assign & bind on UI-thread (we are in UI context because this is an event handler)
-                reservationTable = resTable ?? new System.Data.DataTable();
+                reservationTable = resTable;
                 bindingReservations.DataSource = reservationTable;
                 dgvReservations.DataSource = bindingReservations;
                 dgvReservations.ClearSelection();
 
-                leaseTable = leaTable ?? new System.Data.DataTable();
+                leaseTable = leaTable;
                 bindingLeases.DataSource = leaseTable;
                 dgvLeases.DataSource = bindingLeases;
                 dgvLeases.ClearSelection();
+
+                // Update tab texts with counts
+                UpdateReservationsTabText();
+                UpdateLeasesTabText();
 
                 UpdateStatus($"Found {reservationTable.Rows.Count} reservation(s) and {leaseTable.Rows.Count} lease(s) in scope {scopeId}.");
             }
@@ -182,7 +184,7 @@ namespace DhcpWmiViewer
                     try
                     {
                         Helpers.WriteDebugLog($"TRACE: Prefetch reservations started for {canonicalServer}::{scopeId}");
-                        var dt = await DhcpManager.QueryReservationsAsync(server, scopeId, s => GetCredentialsForServer(s)!).ConfigureAwait(false);
+                        var dt = await DhcpManager.QueryReservationsAsync(server, scopeId, s => GetCredentialsForServerWithTracking(s)!).ConfigureAwait(false);
                         Helpers.WriteDebugLog($"TRACE: Prefetch reservations finished for {canonicalServer}::{scopeId} (rows={(dt?.Rows.Count.ToString() ?? "null")})");
                         return dt;
                     }

@@ -50,11 +50,8 @@ namespace DhcpWmiViewer
 
                 string server = GetServerNameOrDefault();
 
-                // Cred-Fabrik: versuche vorhandene Credentials zurückzugeben; falls null -> we handle gracefully
-                Func<string, PSCredential>? credFactory = (s) =>
-                {
-                    try { return GetCredentialsForServer(s); } catch { return null; }
-                };
+                // Reads: immer integrierte Auth des aktuellen Users (kein Prompt)
+                Func<string, PSCredential?> credFactory = _ => null;
 
                 // Starte Query in background
                 Task<DataTable?> queryTask;

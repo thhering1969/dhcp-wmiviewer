@@ -80,17 +80,38 @@ namespace DhcpWmiViewer
 
             try
             {
-                await PowerShellExecutor.ExecutePowerShellActionAsync(server, getCredentials, ps =>
+                // Try parameter set using ClientId (preferred if available)
+                bool removed = false;
+                if (!string.IsNullOrWhiteSpace(clientId))
                 {
-                    ps.Commands.Clear();
-                    var remove = ps.AddCommand("Remove-DhcpServerv4Reservation")
-                                   .AddParameter("ScopeId", scopeId)
-                                   .AddParameter("IPAddress", oldIp)
-                                   .AddParameter("Confirm", new System.Management.Automation.SwitchParameter(false))
-                                   .AddParameter("ErrorAction", "Stop");
-                    if (!string.IsNullOrWhiteSpace(clientId))
-                        remove.AddParameter("ClientId", clientId);
-                }).ConfigureAwait(false);
+                    try
+                    {
+                        await PowerShellExecutor.ExecutePowerShellActionAsync(server, getCredentials, ps =>
+                        {
+                            ps.Commands.Clear();
+                            ps.AddCommand("Remove-DhcpServerv4Reservation")
+                              .AddParameter("ComputerName", server)
+                              .AddParameter("ScopeId", scopeId)
+                              .AddParameter("ClientId", clientId)
+                              .AddParameter("ErrorAction", "Stop");
+                        }).ConfigureAwait(false);
+                        removed = true;
+                    }
+                    catch { /* fall back to IP */ }
+                }
+
+                if (!removed)
+                {
+                    await PowerShellExecutor.ExecutePowerShellActionAsync(server, getCredentials, ps =>
+                    {
+                        ps.Commands.Clear();
+                        ps.AddCommand("Remove-DhcpServerv4Reservation")
+                          .AddParameter("ComputerName", server)
+                          .AddParameter("ScopeId", scopeId)
+                          .AddParameter("IPAddress", oldIp)
+                          .AddParameter("ErrorAction", "Stop");
+                    }).ConfigureAwait(false);
+                }
 
                 var afterRemove = await QueryReservationsAsync(server, scopeId, getCredentials).ConfigureAwait(false);
                 var stillExists = afterRemove != null && afterRemove.Rows.Cast<DataRow>().Any(r => string.Equals((r["IPAddress"] ?? "").ToString(), oldIp, StringComparison.OrdinalIgnoreCase));
@@ -113,9 +134,8 @@ namespace DhcpWmiViewer
                     {
                         ps.Commands.Clear();
                         ps.AddCommand("Remove-DhcpServerv4Reservation")
-                          .AddParameter("ScopeId", scopeId)
+                          .AddParameter("ComputerName", server)
                           .AddParameter("IPAddress", newIp)
-                          .AddParameter("Confirm", new System.Management.Automation.SwitchParameter(false))
                           .AddParameter("ErrorAction", "Stop");
                     }).ConfigureAwait(false);
                 }
@@ -170,13 +190,19 @@ namespace DhcpWmiViewer
                 await PowerShellExecutor.ExecutePowerShellActionAsync(server, getCredentials, ps =>
                 {
                     ps.Commands.Clear();
-                    var remove = ps.AddCommand("Remove-DhcpServerv4Reservation")
-                                   .AddParameter("ScopeId", scopeId)
-                                   .AddParameter("IPAddress", ipAddress)
-                                   .AddParameter("Confirm", new System.Management.Automation.SwitchParameter(false))
-                                   .AddParameter("ErrorAction", "Stop");
+                    var cmd = ps.AddCommand("Remove-DhcpServerv4Reservation")
+                                .AddParameter("ComputerName", server)
+                                .AddParameter("ErrorAction", "Stop");
+
                     if (!string.IsNullOrWhiteSpace(clientId))
-                        remove.AddParameter("ClientId", clientId);
+                    {
+                        cmd.AddParameter("ScopeId", scopeId)
+                           .AddParameter("ClientId", clientId);
+                    }
+                    else
+                    {
+                        cmd.AddParameter("IPAddress", ipAddress);
+                    }
                 }).ConfigureAwait(false);
             }
             catch (Exception ex)

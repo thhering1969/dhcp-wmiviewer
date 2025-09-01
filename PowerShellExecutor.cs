@@ -321,7 +321,7 @@ namespace DhcpWmiViewer
 
         /// <summary>
         /// Führt eine PowerShell-Action (Add/Remove/Set) aus. buildAction konfiguriert die PowerShell-Instanz.
-        /// Das Script wird remote ausgeführt (oder lokal, falls IsLocalDhcpServer() true und target lokal ist).
+        /// Aktionen werden – wie Queries – per WinRM (Invoke-Command) auf dem Zielserver ausgeführt.
         /// </summary>
         public static Task ExecutePowerShellActionAsync(string server, Func<string, PSCredential?> getCredentials, Action<PowerShell> buildAction)
         {
@@ -341,7 +341,6 @@ namespace DhcpWmiViewer
                     }
 
                     var results = await InvokeScriptAsync(server ?? ".", scriptText, getCredentials).ConfigureAwait(false);
-                    // Ergebnis/Fehlerbehandlung ggf. ergänzen
                 }
             });
         }

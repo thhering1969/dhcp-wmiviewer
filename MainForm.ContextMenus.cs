@@ -120,7 +120,14 @@ namespace DhcpWmiViewer
                     try
                     {
                         var scope = TryGetScopeIdFromSelection() ?? string.Empty;
-                        await TryInvokeRefreshLeases(scope);
+                        if (string.IsNullOrWhiteSpace(scope))
+                        {
+                            MessageBox.Show(this, "Bitte zuerst einen Scope auswählen.", "Kein Scope", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            return;
+                        }
+                        
+                        // Quick background refresh without blocking UI
+                        _ = Task.Run(async () => await TryInvokeRefreshLeases(scope).ConfigureAwait(false));
                     }
                     catch (Exception ex)
                     {
@@ -138,7 +145,22 @@ namespace DhcpWmiViewer
                     refreshItem.Click -= async (s, e) => { await TryInvokeRefreshLeases(TryGetScopeIdFromSelection() ?? string.Empty); };
                     refreshItem.Click += async (s, e) =>
                     {
-                        try { var scope = TryGetScopeIdFromSelection() ?? string.Empty; await TryInvokeRefreshLeases(scope); } catch (Exception ex) { try { MessageBox.Show(this, "Fehler beim Aktualisieren: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { } }
+                        try 
+                        { 
+                            var scope = TryGetScopeIdFromSelection() ?? string.Empty; 
+                            if (string.IsNullOrWhiteSpace(scope))
+                            {
+                                MessageBox.Show(this, "Bitte zuerst einen Scope auswählen.", "Kein Scope", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                return;
+                            }
+                            
+                            // Quick background refresh without blocking UI
+                            _ = Task.Run(async () => await TryInvokeRefreshLeases(scope).ConfigureAwait(false));
+                        } 
+                        catch (Exception ex) 
+                        { 
+                            try { MessageBox.Show(this, "Fehler beim Aktualisieren: " + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { } 
+                        }
                     };
                 }
                 catch { /* ignore */ }

@@ -50,17 +50,18 @@ namespace DhcpWmiViewer
 
         /// <summary>
         /// Delegate zum Abrufen bestehender Reservations (Schema: Spalte "IPAddress").
+        /// Rückgabetyp ist nullable DataTable (Task&lt;DataTable?&gt;), um unterschiedliche Implementierungen zu unterstützen.
         /// </summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public Func<string, Task<DataTable>>? ReservationLookup { get; set; }
+        public Func<string, Task<DataTable?>>? ReservationLookup { get; set; }
 
         /// <summary>
         /// Delegate zum Abrufen bestehender Leases (Schema: Spalte "IPAddress").
         /// </summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public Func<string, Task<DataTable>>? LeaseLookup { get; set; }
+        public Func<string, Task<DataTable?>>? LeaseLookup { get; set; }
 
         // --- Öffentliche API ---
 
@@ -109,7 +110,7 @@ namespace DhcpWmiViewer
                             {
                                 try
                                 {
-                                    var ipObj = r.Table.Columns.Contains("IPAddress") ? r["IPAddress"] : null;
+                                    var ipObj = dt.Columns.Contains("IPAddress") ? r["IPAddress"] : null;
                                     var ipStr = ipObj?.ToString();
                                     if (!string.IsNullOrWhiteSpace(ipStr) && IPAddress.TryParse(ipStr.Trim(), out var ipAddr))
                                         occupied.Add(NormalizeIp(ipAddr));
@@ -136,8 +137,8 @@ namespace DhcpWmiViewer
                             {
                                 try
                                 {
-                                    var ipObj = r.Table.Columns.Contains("IPAddress") ? r["IPAddress"] :
-                                                r.Table.Columns.Contains("IP") ? r["IP"] : null;
+                                    var ipObj = dt.Columns.Contains("IPAddress") ? r["IPAddress"] :
+                                                dt.Columns.Contains("IP") ? r["IP"] : null;
                                     var ipStr = ipObj?.ToString();
                                     if (!string.IsNullOrWhiteSpace(ipStr) && IPAddress.TryParse(ipStr.Trim(), out var ipAddr))
                                         occupied.Add(NormalizeIp(ipAddr));
@@ -166,7 +167,7 @@ namespace DhcpWmiViewer
                             {
                                 try
                                 {
-                                    var ipObj = r.Table.Columns.Contains("IPAddress") ? r["IPAddress"] : null;
+                                    var ipObj = dt.Columns.Contains("IPAddress") ? r["IPAddress"] : null;
                                     var ipStr = ipObj?.ToString();
                                     if (!string.IsNullOrWhiteSpace(ipStr) && IPAddress.TryParse(ipStr.Trim(), out var ipAddr))
                                         occupied.Add(NormalizeIp(ipAddr));
@@ -189,8 +190,8 @@ namespace DhcpWmiViewer
                             {
                                 try
                                 {
-                                    var ipObj = r.Table.Columns.Contains("IPAddress") ? r["IPAddress"] :
-                                                r.Table.Columns.Contains("IP") ? r["IP"] : null;
+                                    var ipObj = dt.Columns.Contains("IPAddress") ? r["IPAddress"] :
+                                                dt.Columns.Contains("IP") ? r["IP"] : null;
                                     var ipStr = ipObj?.ToString();
                                     if (!string.IsNullOrWhiteSpace(ipStr) && IPAddress.TryParse(ipStr.Trim(), out var ipAddr))
                                         occupied.Add(NormalizeIp(ipAddr));
@@ -256,7 +257,8 @@ namespace DhcpWmiViewer
 
             var pnl = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8) };
             var lst = new ListBox { Dock = DockStyle.Fill, SelectionMode = SelectionMode.One };
-            var tbFilter = new TextBox { Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 6), PlaceholderText = "Filter (z. B. 192.168.116.)" };
+            var tbFilter = new TextBox { Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 6) };
+            try { tbFilter.PlaceholderText = "Filter (z. B. 192.168.116.)"; } catch { }
 
             if (choices != null && choices.Count > 0)
                 lst.Items.AddRange(choices.ToArray());

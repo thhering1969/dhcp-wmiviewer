@@ -81,31 +81,15 @@ namespace DhcpWmiViewer
                 if (!string.IsNullOrEmpty(details)) sb.Append($"Details={details};");
                 var message = sb.ToString();
 
-                // 1) Lokal auf DHCP-Server schreiben, falls die App dort läuft
-                if (AppEnvironment.RunningOnDhcpServer)
-                {
-                    try
-                    {
-                        EnsureEventSourceRegisteredBestEffort();
-                        EventLog.WriteEntry(AppConstants.EventSourceName, message, EventLogEntryType.Information, 0);
-                        SafeWriteFallback("LocalWriteSuccess: " + message);
-                        return;
-                    }
-                    catch (Exception exLocal)
-                    {
-                        SafeWriteFallback("Local EventLog.WriteEntry failed: " + exLocal.Message + " | payload: " + message);
-                        // NICHT automatisch remote schreiben — bei lokalem Betrieb wollen wir lokal schreiben
-                        return;
-                    }
-                }
-
-                // 2) Sonst: remote schreiben auf Server aus UI (GetServerNameOrDefault)
+                // 1) Immer auf dem gewählten Server schreiben (aus discovered Server-Liste)
                 var server = GetServerNameOrDefault();
                 if (string.IsNullOrWhiteSpace(server) || server == "." || server.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
                 {
                     SafeWriteFallback("No remote server target for LogGuiEvent. payload: " + message);
                     return;
                 }
+
+                // 2) Remote schreiben auf den gewählten Server
 
                 // Prüfe (mit Cache) ob Source bereits auf remote existiert; falls nicht -> anlegen
                 try
@@ -164,7 +148,7 @@ namespace DhcpWmiViewer
 
             try
             {
-                var cred = GetCredentialsForServer(server);
+                PSCredential? cred = null; // no credential prompts
 
                 string ps = $@"
 Invoke-Command -ComputerName '{EscapeForPowerShell(server)}' -ScriptBlock {{
@@ -250,7 +234,7 @@ Invoke-Command -ComputerName '{EscapeForPowerShell(server)}' -Credential $cred -
 
             try
             {
-                var cred = GetCredentialsForServer(server);
+                PSCredential? cred = null; // no credential prompts
 
                 string ps = $@"
 Invoke-Command -ComputerName '{EscapeForPowerShell(server)}' -ScriptBlock {{
@@ -350,7 +334,7 @@ Invoke-Command -ComputerName '{EscapeForPowerShell(server)}' -Credential $cred -
 
             try
             {
-                var cred = GetCredentialsForServer(server);
+                PSCredential? cred = null; // no credential prompts
 
                 // Script: Write-EventLog with here-string for message
                 string remoteScript = $@"

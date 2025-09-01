@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DhcpWmiViewer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ad8a729bcc13e1047146a01d11bf4af50af36a4d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f06af169fcc597bd1687413d2a1cdf8daa0a5889")]
 [assembly: System.Reflection.AssemblyProductAttribute("DhcpWmiViewer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DhcpWmiViewer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
