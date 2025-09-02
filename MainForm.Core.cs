@@ -30,8 +30,9 @@ namespace DhcpWmiViewer
         public MainForm()
         {
             Text = "DHCP Scope Viewer (remote via WinRM)";
-            Width = 980;
-            Height = 680;
+            MinimumSize = new Size(1000, 720);
+            Width = Math.Max(Width, 1100);
+            Height = Math.Max(Height, 780);
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 10F);
 
@@ -260,6 +261,10 @@ namespace DhcpWmiViewer
         /// </summary>
         public async Task<T> ExecuteWithIntegratedAuthDetection<T>(string server, Func<string, Func<string, PSCredential?>, Task<T>> operation)
         {
+            // Null-Check für server-Parameter
+            if (string.IsNullOrWhiteSpace(server))
+                server = ".";
+                
             var normalizedServer = server.Trim().ToLowerInvariant();
             bool credentialCallbackWasCalled = false;
             
@@ -388,6 +393,39 @@ namespace DhcpWmiViewer
             return null;
         }
 
+        /// <summary>
+        /// Zeigt den Über-Dialog an
+        /// </summary>
+        private void ShowAboutDialog()
+        {
+            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
+            var isAdmin = AdminRightsChecker.IsRunningAsAdministrator();
+            var userInfo = AdminRightsChecker.GetCurrentUserInfo();
+            
+            var message = $"DHCP WMI Viewer\n" +
+                         $"Version: {version}\n\n" +
+                         $"Eine Windows Forms-Anwendung zur Verwaltung von DHCP-Servern\n" +
+                         $"mit PowerShell- und WMI-Integration.\n\n" +
+                         $"Aktuelle Sitzung:\n" +
+                         $"Administrator: {(isAdmin ? "Ja" : "Nein")}\n\n" +
+                         $"{userInfo}\n\n" +
+                         $"Funktionen:\n" +
+                         $"• DHCP-Server-Erkennung\n" +
+                         $"• Scope- und Lease-Verwaltung\n" +
+                         $"• Reservierungen erstellen/ändern\n" +
+                         $"• PowerShell-Integration\n" +
+                         $"• CSV-Export\n" +
+                         $"• Netzwerk-Ping-Tests\n\n" +
+                         $"© 2025 - Entwickelt für Windows Server-Umgebungen";
+
+            MessageBox.Show(
+                message,
+                "Über DHCP WMI Viewer",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+        }
+
         // ------------------------
         // Shared helpers (utilized by other partials)
         // ------------------------
@@ -449,6 +487,15 @@ namespace DhcpWmiViewer
                 // bindingReservations ist in Controls-Partial deklariert
                 if (bindingReservations != null) bindingReservations.DataSource = reservationTable;
                 if (dgvReservations != null) dgvReservations.DataSource = bindingReservations;
+                // Autosize columns to header+content for reservations grid + let Description fill
+                try {
+                    dgvReservations?.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
+                    if (dgvReservations != null && dgvReservations.Columns != null && dgvReservations.Columns.Contains("Description"))
+                    {
+                        var c = dgvReservations.Columns["Description"]; 
+                        if (c != null) { c.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill; c.MinimumWidth = Math.Max(c.Width, 160); }
+                    }
+                } catch { }
                 
                 // Update tab text with reservation count
                 UpdateReservationsTabText();
@@ -521,6 +568,8 @@ namespace DhcpWmiViewer
                                 dgvLeases.DataSource = null;
                                 if (bindingLeases != null) bindingLeases.DataSource = leaseTable;
                                 dgvLeases.DataSource = bindingLeases;
+                                // adjust leases column widths to fit header and content
+                                try { AdjustLeasesColumnWidths(); } catch { }
                             }
                             catch (Exception ex)
                             {
@@ -572,6 +621,7 @@ namespace DhcpWmiViewer
                             dgvLeases.DataSource = null;
                             if (bindingLeases != null) bindingLeases.DataSource = leaseTable;
                             dgvLeases.DataSource = bindingLeases;
+                            try { AdjustLeasesColumnWidths(); } catch { }
                         }
                         catch (Exception ex)
                         {

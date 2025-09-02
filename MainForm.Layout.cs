@@ -23,6 +23,25 @@ namespace DhcpWmiViewer
                          ControlStyles.DoubleBuffer | 
                          ControlStyles.ResizeRedraw, true);
 
+            // Menü erstellen
+            var menuStrip = new MenuStrip { Dock = DockStyle.Top, GripStyle = ToolStripGripStyle.Hidden, Renderer = new ToolStripProfessionalRenderer() };
+            menuStrip.Padding = new Padding(4, 2, 0, 2);
+            var helpMenu = new ToolStripMenuItem("&Hilfe");
+            var securityInfoItem = new ToolStripMenuItem("&Sicherheitsinformationen...");
+            var aboutItem = new ToolStripMenuItem("&Über...");
+            
+            securityInfoItem.Click += (s, e) => AdminRightsChecker.ShowSecurityInfo();
+            aboutItem.Click += (s, e) => ShowAboutDialog();
+            
+            helpMenu.DropDownItems.Add(securityInfoItem);
+            helpMenu.DropDownItems.Add(new ToolStripSeparator());
+            helpMenu.DropDownItems.Add(aboutItem);
+            
+            menuStrip.Items.Add(helpMenu);
+            this.MainMenuStrip = menuStrip;
+            menuStrip.Dock = DockStyle.Top;
+            // menuStrip is added later in explicit order
+
             // --- WICHTIG: BindingSources frühzeitig initialisieren ---
             binding = new BindingSource();
             bindingReservations = new BindingSource();
@@ -35,7 +54,8 @@ namespace DhcpWmiViewer
             bindingLeases.DataSource = new DataTable();
             bindingEvents.DataSource = new DataTable();
 
-            var header = new Panel { Dock = DockStyle.Top, Padding = new Padding(8), Height = 76 };
+            var header = new Panel { Dock = DockStyle.Top, Padding = new Padding(8), Height = 76, BackColor = SystemColors.Control };
+            header.MinimumSize = new Size(0, 60);
             
             // Einfaches Layout ohne TableLayoutPanel
             var lbl = new Label { Text = "Server:", Location = new Point(0, 8), AutoSize = true };
@@ -88,18 +108,27 @@ namespace DhcpWmiViewer
             header.Controls.Add(btnExportCsv);
             header.Controls.Add(btnDebugColumns);
 
+            // Status und Progressbar unter dem Header, über dem Content
             lblStatus = new Label { Dock = DockStyle.Top, Height = 26, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 2, 6, 2) };
-            pb = new ProgressBar { Dock = DockStyle.Top, Height = 10, Visible = false };
+            pb = new ProgressBar { Dock = DockStyle.Top, Height = 10, Visible = false, Minimum = 0, Maximum = 100, Style = ProgressBarStyle.Continuous };
 
-            var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8) };
+            var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8), BackColor = SystemColors.Window };
+            content.SuspendLayout();
             var split = new SplitContainer 
             { 
                 Dock = DockStyle.Fill, 
                 Orientation = Orientation.Horizontal, 
-                SplitterDistance = 35,
+                // Make top panel about 1/3 of the form height by default so the bottom gets ~2/3
+                SplitterDistance = Math.Max(160, (int)(this.ClientSize.Height * 0.35)),
                 FixedPanel = FixedPanel.None,
                 IsSplitterFixed = false,
-                SplitterWidth = 4
+                SplitterWidth = 6,
+                Panel1MinSize = 160,
+                Panel2MinSize = 120
+            };
+            // Re-adjust once the form is shown (handles high DPI / different window sizes)
+            this.Shown += (s, e) => {
+                try { split.SplitterDistance = Math.Max(160, (int)(this.ClientSize.Height * 0.35)); } catch { /* ignore */ }
             };
 
             // Top: scopes grid
@@ -109,16 +138,37 @@ namespace DhcpWmiViewer
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 AutoGenerateColumns = true,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells, // size to headers and content
                 DefaultCellStyle = { WrapMode = DataGridViewTriState.False },
                 AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
                 RowTemplate = { Height = 22 }, // Fixed row height for better performance
-                VirtualMode = false
+                VirtualMode = false,
+                ColumnHeadersVisible = true,
+                ColumnHeadersHeight = 36,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing
+            };
+            dgv.MinimumSize = new Size(200, 160);
+            dgv.Padding = new Padding(0, 12, 0, 0); // extra space below header area to avoid overlay
+            dgv.Resize += (s, e) => {
+                try { dgv.ColumnHeadersHeight = Math.Max(36, TextRenderer.MeasureText("Ag", dgv.ColumnHeadersDefaultCellStyle.Font ?? dgv.Font).Height + 12); } catch {}
             };
             dgv.ColumnHeadersDefaultCellStyle.Font = new Font(Font, FontStyle.Bold);
+            // Ensure readable headers across DPI/themes
+            dgv.EnableHeadersVisualStyles = false;
+            dgv.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+            dgv.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+            dgv.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
+            // Keep explicit header height without AutoSize to avoid DPI truncation
+            dgv.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing;
             dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgv.MultiSelect = false;
             dgv.RowHeadersVisible = true;
+            // Ensure visible contrast lines and headers
+            dgv.GridColor = SystemColors.ControlDark;
+            dgv.BackgroundColor = SystemColors.Window;
+            dgv.BorderStyle = BorderStyle.FixedSingle;
+            dgv.AdvancedColumnHeadersBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
+            dgv.AdvancedCellBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
             dgv.SelectionChanged += Dgv_SelectionChanged;
 
             // binde die zuvor erstellte BindingSource an das Scope-Grid
@@ -131,16 +181,34 @@ namespace DhcpWmiViewer
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 AutoGenerateColumns = true,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells, // size to headers and content
                 DefaultCellStyle = { WrapMode = DataGridViewTriState.False },
                 AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
                 RowTemplate = { Height = 22 }, // Fixed row height for better performance
-                VirtualMode = false
+                VirtualMode = false,
+                ColumnHeadersVisible = true,
+                ColumnHeadersHeight = 32,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing
+            };
+            dgvReservations.MinimumSize = new Size(200, 120);
+            dgvReservations.Resize += (s, e) => {
+                try { dgvReservations.ColumnHeadersHeight = Math.Max(32, TextRenderer.MeasureText("Ag", dgvReservations.ColumnHeadersDefaultCellStyle.Font ?? dgvReservations.Font).Height + 10); } catch {}
             };
             dgvReservations.ColumnHeadersDefaultCellStyle.Font = new Font(Font, FontStyle.Bold);
+            // Ensure readable headers across DPI/themes
+            dgvReservations.EnableHeadersVisualStyles = false;
+            dgvReservations.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+            dgvReservations.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+            dgvReservations.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
+            dgvReservations.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing;
             dgvReservations.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvReservations.MultiSelect = false;
             dgvReservations.RowHeadersVisible = true;
+            dgvReservations.GridColor = SystemColors.ControlDark;
+            dgvReservations.BackgroundColor = SystemColors.Window;
+            dgvReservations.BorderStyle = BorderStyle.FixedSingle;
+            dgvReservations.AdvancedColumnHeadersBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
+            dgvReservations.AdvancedCellBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
             dgvReservations.CellDoubleClick += DgvReservations_CellDoubleClick;
 
             // existing inline CellMouseDown selection remains (keeps previous behavior)
@@ -165,17 +233,35 @@ namespace DhcpWmiViewer
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 AutoGenerateColumns = false, // IMPORTANT: we define columns explicitly
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None, // we compute exact widths after binding
                 DefaultCellStyle = { WrapMode = DataGridViewTriState.False },
                 AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
                 RowTemplate = { Height = 22 }, // Fixed row height for better performance
-                ScrollBars = ScrollBars.Vertical, // default, adjust inside AdjustLeasesColumnWidths()
-                VirtualMode = false
+                ScrollBars = ScrollBars.Vertical, // default, AdjustLeasesColumnWidths will toggle if needed
+                VirtualMode = false,
+                ColumnHeadersVisible = true,
+                ColumnHeadersHeight = 32,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing
+            };
+            dgvLeases.MinimumSize = new Size(200, 120);
+            dgvLeases.Resize += (s, e) => {
+                try { dgvLeases.ColumnHeadersHeight = Math.Max(32, TextRenderer.MeasureText("Ag", dgvLeases.ColumnHeadersDefaultCellStyle.Font ?? dgvLeases.Font).Height + 10); } catch {}
             };
             dgvLeases.ColumnHeadersDefaultCellStyle.Font = new Font(Font, FontStyle.Bold);
+            // Ensure readable headers across DPI/themes
+            dgvLeases.EnableHeadersVisualStyles = false;
+            dgvLeases.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+            dgvLeases.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+            dgvLeases.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
+            dgvLeases.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing;
             dgvLeases.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvLeases.MultiSelect = false;
             dgvLeases.RowHeadersVisible = true;
+            dgvLeases.GridColor = SystemColors.ControlDark;
+            dgvLeases.BackgroundColor = SystemColors.Window;
+            dgvLeases.BorderStyle = BorderStyle.FixedSingle;
+            dgvLeases.AdvancedColumnHeadersBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
+            dgvLeases.AdvancedCellBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
             dgvLeases.CellMouseDown += DgvLeases_CellMouseDown;
 
             contextMenuLeases = new ContextMenuStrip();
@@ -292,10 +378,24 @@ namespace DhcpWmiViewer
                 DefaultCellStyle = { WrapMode = DataGridViewTriState.False }, // Disable text wrapping for performance
                 AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,     // Fixed row height for performance
                 RowTemplate = { Height = 22 }, // Fixed row height
-                VirtualMode = false
+                VirtualMode = false,
+                ColumnHeadersVisible = true,
+                ColumnHeadersHeight = 25,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing
             };
             dgvEvents.ColumnHeadersDefaultCellStyle.Font = new Font(Font, FontStyle.Bold);
+            // Ensure readable headers across DPI/themes
+            dgvEvents.EnableHeadersVisualStyles = false;
+            dgvEvents.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+            dgvEvents.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+            dgvEvents.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
+            dgvEvents.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing;
 
+            dgvEvents.GridColor = SystemColors.ControlDark;
+            dgvEvents.BackgroundColor = SystemColors.Window;
+            dgvEvents.BorderStyle = BorderStyle.FixedSingle;
+            dgvEvents.AdvancedColumnHeadersBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
+            dgvEvents.AdvancedCellBorderStyle.All = DataGridViewAdvancedCellBorderStyle.Single;
             // explicit columns - Message column is Fill to take remaining space
             dgvEvents.Columns.Add(new DataGridViewTextBoxColumn { Name = "TimeCreated", HeaderText = "Time (UTC)", DataPropertyName = "TimeCreated", Width = 160, AutoSizeMode = DataGridViewAutoSizeColumnMode.None });
             dgvEvents.Columns.Add(new DataGridViewTextBoxColumn { Name = "EntryType", HeaderText = "Type", DataPropertyName = "EntryType", Width = 90, AutoSizeMode = DataGridViewAutoSizeColumnMode.None });
@@ -385,11 +485,33 @@ namespace DhcpWmiViewer
             split.Panel2.Controls.Add(tabs);
 
             content.Controls.Add(split);
+            content.ResumeLayout(true);
 
-            Controls.Add(content);
-            Controls.Add(pb);
-            Controls.Add(lblStatus);
-            Controls.Add(header);
+            // Build a deterministic layout using a TableLayoutPanel (rows: Menu | Header | Status | Progress | Content)
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, AutoSize = false };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));                 // Menu
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, header.Height));  // Header fixed height
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));                 // Status
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));                 // Progress (0 when invisible)
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));            // Content
+
+            // Ensure proper docking inside TLP cells
+            menuStrip.Dock = DockStyle.Fill;
+            header.Dock = DockStyle.Fill;
+            lblStatus.Dock = DockStyle.Fill;
+            pb.Dock = DockStyle.Fill;
+            content.Dock = DockStyle.Fill;
+
+            layout.Controls.Add(menuStrip, 0, 0);
+            layout.Controls.Add(header,   0, 1);
+            layout.Controls.Add(lblStatus,0, 2);
+            layout.Controls.Add(pb,       0, 3);
+            layout.Controls.Add(content,  0, 4);
+
+            // Add the TLP as the single root control
+            Controls.Add(layout);
+            Controls.SetChildIndex(layout, 0);
 
             // initialize events table (implementation lives in MainForm.Events.cs)
             InitEventsTable();
@@ -408,6 +530,9 @@ namespace DhcpWmiViewer
                     {
                         this.PerformLayout();
                         this.Refresh();
+                        if (dgv != null) dgv.Refresh();
+                        if (dgvReservations != null) dgvReservations.Refresh();
+                        if (dgvLeases != null) dgvLeases.Refresh();
                         if (dgvEvents != null) dgvEvents.Refresh();
                     }
                     catch { }

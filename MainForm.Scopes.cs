@@ -80,6 +80,19 @@ namespace DhcpWmiViewer
                 currentTable = dt;
                 binding.DataSource = currentTable;
                 dgv.DataSource = binding;
+                // Autosize columns to header+content for scopes grid
+                try { dgv.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells); } catch { }
+                // Let "Description" consume remaining space if present
+                try 
+                { 
+                    var descCol = dgv.Columns.Contains("Description") ? dgv.Columns["Description"] : null; 
+                    if (descCol != null) 
+                    { 
+                        descCol.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill; 
+                        descCol.MinimumWidth = Math.Max(descCol.Width, 160); 
+                    }
+                } 
+                catch { }
                 dgv.ClearSelection();
                 reservationTable.Rows.Clear();
                 leaseTable.Rows.Clear();

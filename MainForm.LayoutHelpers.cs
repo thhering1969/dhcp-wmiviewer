@@ -126,7 +126,7 @@ namespace DhcpWmiViewer
                         catch { /* ignore individual column errors */ }
                     }
 
-                    // ------------- 3) Falls Gesamtbreite kleiner als Anzeige, fülle Rest auf -------------
+                    // ------------- 3) Falls Gesamtbreite kleiner als Anzeige, fülle Rest sinnvoll (Description bevorzugt) -------------
                     int displayWidth = Math.Max(0, dgvLeases.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
                     if (displayWidth <= 0) displayWidth = Math.Max(displayWidth, this.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
 
@@ -135,15 +135,15 @@ namespace DhcpWmiViewer
                         int extra = displayWidth - totalPreferred;
                         if (extra > 0)
                         {
-                            int targetIdx = dgvLeases.Columns.Count - 1;
-                            if (targetIdx >= 0)
+                            // Prefer a descriptive column to take leftover space
+                            DataGridViewColumn? target = null;
+                            if (dgvLeases.Columns.Contains("Description")) target = dgvLeases.Columns["Description"]; 
+                            if (target == null && dgvLeases.Columns.Contains("HostName")) target = dgvLeases.Columns["HostName"]; 
+                            if (target == null) target = dgvLeases.Columns[dgvLeases.Columns.Count - 1];
+                            if (target != null)
                             {
-                                var target = dgvLeases.Columns[targetIdx];
-                                if (target != null)
-                                {
-                                    int newWidth = Math.Min(maxColumnWidth, target.Width + extra);
-                                    target.Width = newWidth;
-                                }
+                                int newWidth = Math.Min(maxColumnWidth, target.Width + extra);
+                                target.Width = newWidth;
                             }
                         }
                     }
