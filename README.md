@@ -4,6 +4,7 @@
 [![Windows](https://img.shields.io/badge/OS-Windows-blue.svg)](https://www.microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PowerShell](https://img.shields.io/badge/PowerShell-7.5-blue.svg)](https://github.com/PowerShell/PowerShell)
+[![GitHub Release](https://img.shields.io/github/v/release/thhering1969/dhcp-wmiviewer.svg)](https://github.com/thhering1969/dhcp-wmiviewer/releases)
 
 Ein leistungsstarkes Windows Forms Tool zur Verwaltung und Überwachung von DHCP-Servern über WMI und PowerShell.
 
