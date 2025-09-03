@@ -83,7 +83,7 @@ I've been working on an open-source tool for DHCP management that I think you mi
 
 Would love to get feedback from the community! Anyone interested in testing or contributing?
 
-GitHub: [link]
+GitHub: https://github.com/thhering1969/dhcp-wmiviewer
 ```
 
 **r/PowerShell:**

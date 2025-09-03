@@ -75,8 +75,8 @@ Ein leistungsstarkes Windows Forms Tool zur Verwaltung und Überwachung von DHCP
 
 ```bash
 # Klonen des Repositories
-git clone https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer.git
-cd kurzzeit-dhcp-wmiviewer
+git clone https://github.com/thhering1969/dhcp-wmiviewer.git
+cd dhcp-wmiviewer
 
 # Build
 dotnet build -c Release
@@ -223,8 +223,8 @@ DhcpWmiViewer/
 
 ```bash
 # Repository klonen
-git clone https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer.git
-cd kurzzeit-dhcp-wmiviewer
+git clone https://github.com/thhering1969/dhcp-wmiviewer.git
+cd dhcp-wmiviewer
 
 # Dependencies wiederherstellen
 dotnet restore
@@ -406,8 +406,8 @@ Dieses Projekt steht unter der MIT-Lizenz. Siehe [LICENSE](LICENSE) für Details
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer/discussions)
+- **Issues**: [GitHub Issues](https://github.com/thhering1969/dhcp-wmiviewer/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/thhering1969/dhcp-wmiviewer/discussions)
 - **Email**: [Entwickler kontaktieren](mailto:thorsten.hering@goevb.de)
 
 ---

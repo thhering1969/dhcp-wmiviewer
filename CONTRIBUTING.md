@@ -29,8 +29,8 @@ Thank you for your interest in contributing to DHCP WMI Viewer! 🎉
 #### Development Setup
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR-USERNAME/kurzzeit-dhcp-wmiviewer.git
-cd kurzzeit-dhcp-wmiviewer
+git clone https://github.com/YOUR-USERNAME/dhcp-wmiviewer.git
+cd dhcp-wmiviewer
 
 # Restore dependencies
 dotnet restore
@@ -121,8 +121,8 @@ If you discover a security vulnerability, please:
 
 ## 📞 Getting Help
 
-- **Questions**: Use [GitHub Discussions](https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer/discussions)
-- **Issues**: Use [GitHub Issues](https://github.com/thhering1969/kurzzeit-dhcp-wmiviewer/issues)
+- **Questions**: Use [GitHub Discussions](https://github.com/thhering1969/dhcp-wmiviewer/discussions)
+- **Issues**: Use [GitHub Issues](https://github.com/thhering1969/dhcp-wmiviewer/issues)
 - **Chat**: Join our community discussions
 
 ## 📄 License
