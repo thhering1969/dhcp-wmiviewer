@@ -1,6 +1,7 @@
 // DhcpManager.Query.cs
 using System;
 using System.Data;
+using System.Linq;
 using System.Management.Automation;
 using System.Threading.Tasks;
 
@@ -8,12 +9,15 @@ namespace DhcpWmiViewer
 {
     public static partial class DhcpManager
     {
-        public static Task<DataTable> QueryScopesAsync(string server, Func<string, PSCredential?> getCredentials)
+        public static Task<DataTable> QueryScopesAsync(string server, Func<string, PSCredential?>? getCredentials)
         {
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
                 ps.AddCommand("Get-DhcpServerv4Scope");
-                ps.AddCommand("Select-Object").AddParameter("Property", new[] { "Name", "ScopeId", "StartRange", "EndRange", "SubnetMask", "State", "Description" });
+                var properties = new[] { "Name", "ScopeId", "StartRange", "EndRange", "SubnetMask", "State", "Description" };
+                if (properties == null || properties.Any(p => string.IsNullOrWhiteSpace(p)))
+                    throw new ArgumentException("Properties array contains null or empty values");
+                ps.AddCommand("Select-Object").SafeAddParameter("Property", properties);
             }, dt =>
             {
                 dt.Columns.Add("Name", typeof(string));
@@ -26,12 +30,15 @@ namespace DhcpWmiViewer
             });
         }
 
-        public static Task<DataTable> QueryReservationsAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials)
+        public static Task<DataTable> QueryReservationsAsync(string server, string scopeId, Func<string, PSCredential?>? getCredentials)
         {
+            if (string.IsNullOrWhiteSpace(scopeId))
+                throw new ArgumentException("ScopeId cannot be null or empty", nameof(scopeId));
+                
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
-                ps.AddCommand("Get-DhcpServerv4Reservation").AddParameter("ScopeId", scopeId);
-                ps.AddCommand("Select-Object").AddParameter("Property", new[] { "IPAddress", "ClientId", "Name", "Description", "AddressState" });
+                ps.AddCommand("Get-DhcpServerv4Reservation").SafeAddParameter("ScopeId", scopeId);
+                ps.AddCommand("Select-Object").SafeAddParameter("Property", new[] { "IPAddress", "ClientId", "Name", "Description", "AddressState" });
             }, dt =>
             {
                 dt.Columns.Add("IPAddress", typeof(string));
@@ -42,19 +49,22 @@ namespace DhcpWmiViewer
             });
         }
 
-        public static Task<DataTable> QueryLeasesAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials, int? limit = null)
+        public static Task<DataTable> QueryLeasesAsync(string server, string scopeId, Func<string, PSCredential?>? getCredentials, int? limit = null)
         {
+            if (string.IsNullOrWhiteSpace(scopeId))
+                throw new ArgumentException("ScopeId cannot be null or empty", nameof(scopeId));
+                
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
-                ps.AddCommand("Get-DhcpServerv4Lease").AddParameter("ScopeId", scopeId);
-                ps.AddCommand("Select-Object").AddParameter("Property", new[] { 
+                ps.AddCommand("Get-DhcpServerv4Lease").SafeAddParameter("ScopeId", scopeId);
+                ps.AddCommand("Select-Object").SafeAddParameter("Property", new[] { 
                     "IPAddress", "ClientId", "ClientType", "HostName", "Description", 
                     "AddressState", "LeaseExpiryTime", "ScopeId", "ServerIP", "PSComputerName",
                     "CimClass", "CimInstanceProperties", "CimSystemProperties"
                 });
                 if (limit.HasValue)
                 {
-                    ps.AddCommand("Select-Object").AddParameter("First", limit.Value);
+                    ps.AddCommand("Select-Object").SafeAddParameter("First", limit.Value);
                 }
             }, dt =>
             {
@@ -77,12 +87,12 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Query all leases for a scope without the First 5 limitation
         /// </summary>
-        public static Task<DataTable> QueryLeasesAsyncUnlimited(string server, string scopeId, Func<string, PSCredential?> getCredentials)
+        public static Task<DataTable> QueryLeasesAsyncUnlimited(string server, string scopeId, Func<string, PSCredential?>? getCredentials)
         {
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
-                ps.AddCommand("Get-DhcpServerv4Lease").AddParameter("ScopeId", scopeId);
-                ps.AddCommand("Select-Object").AddParameter("Property", new[] { 
+                ps.AddCommand("Get-DhcpServerv4Lease").SafeAddParameter("ScopeId", scopeId);
+                ps.AddCommand("Select-Object").SafeAddParameter("Property", new[] { 
                     "IPAddress", "ClientId", "ClientType", "HostName", "Description", 
                     "AddressState", "LeaseExpiryTime", "ScopeId", "ServerIP", "PSComputerName",
                     "CimClass", "CimInstanceProperties", "CimSystemProperties"
@@ -108,17 +118,17 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Very fast query - only essential data for maximum speed
         /// </summary>
-        public static Task<DataTable> QueryLeasesFastAsync(string server, string scopeId, Func<string, PSCredential?> getCredentials, int? limit = null)
+        public static Task<DataTable> QueryLeasesFastAsync(string server, string scopeId, Func<string, PSCredential?>? getCredentials, int? limit = null)
         {
             return PowerShellExecutor.ExecutePowerShellQueryAsync(server, getCredentials, ps =>
             {
-                ps.AddCommand("Get-DhcpServerv4Lease").AddParameter("ScopeId", scopeId);
-                ps.AddCommand("Select-Object").AddParameter("Property", new[] { 
+                ps.AddCommand("Get-DhcpServerv4Lease").SafeAddParameter("ScopeId", scopeId);
+                ps.AddCommand("Select-Object").SafeAddParameter("Property", new[] { 
                     "IPAddress", "ClientId", "HostName", "AddressState"
                 });
                 if (limit.HasValue)
                 {
-                    ps.AddCommand("Select-Object").AddParameter("First", limit.Value);
+                    ps.AddCommand("Select-Object").SafeAddParameter("First", limit.Value);
                 }
             }, dt =>
             {

@@ -78,6 +78,9 @@ namespace DhcpWmiViewer
             {
                 var dt = await ExecuteWithIntegratedAuthDetection(server, DhcpManager.QueryScopesAsync);
                 currentTable = dt;
+                
+                // Debug-Ausgabe entfernt für Release-Version
+                
                 binding.DataSource = currentTable;
                 dgv.DataSource = binding;
                 // Autosize columns to header+content for scopes grid

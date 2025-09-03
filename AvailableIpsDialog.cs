@@ -60,7 +60,10 @@ namespace DhcpWmiViewer
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 AllowUserToAddRows = false,
                 RowHeadersVisible = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                ColumnHeadersVisible = true,
+                ColumnHeadersHeight = 25,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing
             };
             dgv.Columns.Add("ip", "IP-Adresse");
             dgv.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) SelectCurrentAndClose(); };

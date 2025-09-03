@@ -23,10 +23,10 @@ namespace DhcpWmiViewer
                 {
                     ps.Commands.Clear();
                     ps.AddCommand("Remove-DhcpServerv4Reservation")
-                      .AddParameter("ScopeId", scopeId)
-                      .AddParameter("IPAddress", ipAddress)
-                      .AddParameter("Confirm", new SwitchParameter(false))
-                      .AddParameter("ErrorAction", "Stop");
+                      .SafeAddParameter("ScopeId", scopeId)
+                      .SafeAddParameter("IPAddress", ipAddress)
+                      .SafeAddParameter("Confirm", new SwitchParameter(false))
+                      .SafeAddParameter("ErrorAction", "Stop");
                 }).ConfigureAwait(false);
 
                 // Verifiziere: ist die Reservation noch vorhanden?

@@ -51,16 +51,16 @@ namespace DhcpWmiViewer
                     {
                         ps.Commands.Clear();
                         var addCmd = ps.AddCommand("Add-DhcpServerv4Reservation")
-                                      .AddParameter("ComputerName", server)
-                                      .AddParameter("ScopeId", scopeId)
-                                      .AddParameter("IPAddress", ipAddress)
-                                      .AddParameter("ErrorAction", "Stop");
+                                      .SafeAddParameter("ComputerName", server)
+                                      .SafeAddParameter("ScopeId", scopeId)
+                                      .SafeAddParameter("IPAddress", ipAddress)
+                                      .SafeAddParameter("ErrorAction", "Stop");
                         if (!string.IsNullOrWhiteSpace(candidate))
-                            addCmd.AddParameter("ClientId", candidate);
+                            addCmd.SafeAddParameter("ClientId", candidate);
                         if (!string.IsNullOrWhiteSpace(name))
-                            addCmd.AddParameter("Name", name);
+                            addCmd.SafeAddParameter("Name", name);
                         if (!string.IsNullOrWhiteSpace(description))
-                            addCmd.AddParameter("Description", description);
+                            addCmd.SafeAddParameter("Description", description);
                     }).ConfigureAwait(false);
 
                     var after = await QueryReservationsAsync(server, scopeId, getCredentials).ConfigureAwait(false);

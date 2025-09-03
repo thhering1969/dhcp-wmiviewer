@@ -12,9 +12,15 @@ namespace DhcpWmiViewer
 {
     public partial class ConvertLeaseToReservationDialog : Form
     {
-        // Fallback-Firewall-Bereich (wenn die Dialog-Instanz keine FirewallStart/FirewallEnd-Props hat)
-        private const string DefaultFirewallStart = "192.168.116.180";
-        private const string DefaultFirewallEnd   = "192.168.116.254";
+        // Fallback-Firewall-Bereiche (für Rückwärtskompatibilität - werden durch FirewallConfig ersetzt)
+        private const string DefaultFirewallStart1 = "192.168.116.180";
+        private const string DefaultFirewallEnd1   = "192.168.116.254";
+        private const string DefaultFirewallStart2 = "192.168.116.4";
+        private const string DefaultFirewallEnd2   = "192.168.116.48";
+        
+        // Primärer Bereich (für Rückwärtskompatibilität)
+        private const string DefaultFirewallStart = DefaultFirewallStart1;
+        private const string DefaultFirewallEnd = DefaultFirewallEnd1;
 
         protected override void OnShown(EventArgs e)
         {
@@ -96,9 +102,10 @@ namespace DhcpWmiViewer
             // 1) Ermittle ScopeId (falls vorhanden)
             string scopeId = TryGetDialogStringProperty(new[] { "ScopeId", "Scope" }) ?? string.Empty;
 
-            // 2) Ermittle Firewall-Bereich (falls Dialog Properties dafür definiert hat)
-            var firewallStart = TryGetDialogStringProperty(new[] { "FirewallStart", "FirewallBegin" }) ?? DefaultFirewallStart;
-            var firewallEnd   = TryGetDialogStringProperty(new[] { "FirewallEnd", "FirewallStop", "FirewallFinish" }) ?? DefaultFirewallEnd;
+            // 2) Ermittle Firewall-Bereich (falls Dialog Properties dafür definiert hat, sonst aus AppConstants)
+            var (defaultStart, defaultEnd) = AppConstants.GetCombinedFirewallRange();
+            var firewallStart = TryGetDialogStringProperty(new[] { "FirewallStart", "FirewallBegin" }) ?? defaultStart;
+            var firewallEnd   = TryGetDialogStringProperty(new[] { "FirewallEnd", "FirewallStop", "FirewallFinish" }) ?? defaultEnd;
 
             // 3) Hole Reservations und Leases (wenn Lookup-Delegates vorhanden sind)
             var reservedOrLeased = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -228,24 +235,16 @@ namespace DhcpWmiViewer
             }
             catch { }
 
-            // 4) Erzeuge Liste der freien IPs im Firewall-Bereich (exklusive reservedOrLeased)
+            // 4) Erzeuge Liste der freien IPs in beiden Firewall-Bereichen (exklusive reservedOrLeased)
             var available = new List<string>();
             try
             {
-                var rangeStart = IPStringToUInt32(firewallStart);
-                var rangeEnd = IPStringToUInt32(firewallEnd);
-                Helpers.WriteDebugLog($"IP-Picker Range: {firewallStart} -> {firewallEnd} | start={rangeStart}, end={rangeEnd} | reservedOrLeased={reservedOrLeased.Count}");
-                if (rangeStart <= rangeEnd)
-                {
-                    for (uint cur = rangeStart; cur <= rangeEnd; cur++)
-                    {
-                        var ip = UInt32ToIPString(cur);
-                        if (!reservedOrLeased.Contains(ip))
-                            available.Add(ip);
-                        // safe-guard: avoid extremely large loops (should not occur)
-                        if (available.Count > 50000) break;
-                    }
-                }
+                // Verwende alle Firewall-Bereiche aus AppConstants
+                available = AppConstants.GetAvailableFirewallIps(reservedOrLeased);
+                
+                Helpers.WriteDebugLog($"IP-Picker: Using firewall ranges from AppConstants");
+                Helpers.WriteDebugLog($"IP-Picker: Firewall ranges: {AppConstants.InternetAllowedRangeString}");
+
                 try
                 {
                     var ap = available.Take(10).ToArray();
@@ -253,13 +252,17 @@ namespace DhcpWmiViewer
                 }
                 catch { }
             }
-            catch
+            catch (Exception ex)
             {
                 // fallback: empty available list
+                Helpers.WriteDebugLog($"IP-Picker: Error generating available IPs: {ex.Message}");
+                available = new List<string>();
             }
 
-            // 5) Display picker dialog
-            using (var picker = new IpPickerForm(available, firewallStart, firewallEnd, reservedOrLeased.Count))
+            // 5) Display picker dialog - zeige alle Firewall-Bereiche in der Anzeige
+            var rangeDisplay = AppConstants.InternetAllowedRangeString;
+            var (displayStart, displayEnd) = AppConstants.GetCombinedFirewallRange();
+            using (var picker = new IpPickerForm(available, displayStart, displayEnd, reservedOrLeased.Count))
             {
                 try { Helpers.WriteDebugLog($"IP-Picker: showing dialog with {available.Count} items"); } catch { }
                 var dr = picker.ShowDialog(this);

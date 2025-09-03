@@ -44,15 +44,15 @@ namespace DhcpWmiViewer
                     {
                         ps.Commands.Clear();
                         var add = ps.AddCommand("Add-DhcpServerv4Reservation")
-                                    .AddParameter("ScopeId", scopeId)
-                                    .AddParameter("IPAddress", newIp)
-                                    .AddParameter("ErrorAction", "Stop");
+                                    .SafeAddParameter("ScopeId", scopeId)
+                                    .SafeAddParameter("IPAddress", newIp)
+                                    .SafeAddParameter("ErrorAction", "Stop");
                         if (!string.IsNullOrWhiteSpace(candidate))
-                            add.AddParameter("ClientId", candidate);
+                            add.SafeAddParameter("ClientId", candidate);
                         if (!string.IsNullOrWhiteSpace(name))
-                            add.AddParameter("Name", name);
+                            add.SafeAddParameter("Name", name);
                         if (!string.IsNullOrWhiteSpace(description))
-                            add.AddParameter("Description", description);
+                            add.SafeAddParameter("Description", description);
                     }).ConfigureAwait(false);
 
                     var afterAdd = await QueryReservationsAsync(server, scopeId, getCredentials).ConfigureAwait(false);
@@ -90,10 +90,10 @@ namespace DhcpWmiViewer
                         {
                             ps.Commands.Clear();
                             ps.AddCommand("Remove-DhcpServerv4Reservation")
-                              .AddParameter("ComputerName", server)
-                              .AddParameter("ScopeId", scopeId)
-                              .AddParameter("ClientId", clientId)
-                              .AddParameter("ErrorAction", "Stop");
+                              .SafeAddParameter("ComputerName", server)
+                              .SafeAddParameter("ScopeId", scopeId)
+                              .SafeAddParameter("ClientId", clientId)
+                              .SafeAddParameter("ErrorAction", "Stop");
                         }).ConfigureAwait(false);
                         removed = true;
                     }
@@ -106,10 +106,10 @@ namespace DhcpWmiViewer
                     {
                         ps.Commands.Clear();
                         ps.AddCommand("Remove-DhcpServerv4Reservation")
-                          .AddParameter("ComputerName", server)
-                          .AddParameter("ScopeId", scopeId)
-                          .AddParameter("IPAddress", oldIp)
-                          .AddParameter("ErrorAction", "Stop");
+                          .SafeAddParameter("ComputerName", server)
+                          .SafeAddParameter("ScopeId", scopeId)
+                          .SafeAddParameter("IPAddress", oldIp)
+                          .SafeAddParameter("ErrorAction", "Stop");
                     }).ConfigureAwait(false);
                 }
 
@@ -134,9 +134,9 @@ namespace DhcpWmiViewer
                     {
                         ps.Commands.Clear();
                         ps.AddCommand("Remove-DhcpServerv4Reservation")
-                          .AddParameter("ComputerName", server)
-                          .AddParameter("IPAddress", newIp)
-                          .AddParameter("ErrorAction", "Stop");
+                          .SafeAddParameter("ComputerName", server)
+                          .SafeAddParameter("IPAddress", newIp)
+                          .SafeAddParameter("ErrorAction", "Stop");
                     }).ConfigureAwait(false);
                 }
                 catch (Exception rbRemEx)
@@ -150,15 +150,15 @@ namespace DhcpWmiViewer
                     {
                         ps.Commands.Clear();
                         var add = ps.AddCommand("Add-DhcpServerv4Reservation")
-                                    .AddParameter("ScopeId", scopeId)
-                                    .AddParameter("IPAddress", oldIp)
-                                    .AddParameter("ErrorAction", "Stop");
+                                    .SafeAddParameter("ScopeId", scopeId)
+                                    .SafeAddParameter("IPAddress", oldIp)
+                                    .SafeAddParameter("ErrorAction", "Stop");
                         if (!string.IsNullOrWhiteSpace(clientId))
-                            add.AddParameter("ClientId", clientId);
+                            add.SafeAddParameter("ClientId", clientId);
                         if (!string.IsNullOrWhiteSpace(name))
-                            add.AddParameter("Name", name);
+                            add.SafeAddParameter("Name", name);
                         if (!string.IsNullOrWhiteSpace(description))
-                            add.AddParameter("Description", description);
+                            add.SafeAddParameter("Description", description);
                     }).ConfigureAwait(false);
                 }
                 catch (Exception rbAddEx)
@@ -191,17 +191,17 @@ namespace DhcpWmiViewer
                 {
                     ps.Commands.Clear();
                     var cmd = ps.AddCommand("Remove-DhcpServerv4Reservation")
-                                .AddParameter("ComputerName", server)
-                                .AddParameter("ErrorAction", "Stop");
+                                .SafeAddParameter("ComputerName", server)
+                                .SafeAddParameter("ErrorAction", "Stop");
 
                     if (!string.IsNullOrWhiteSpace(clientId))
                     {
-                        cmd.AddParameter("ScopeId", scopeId)
-                           .AddParameter("ClientId", clientId);
+                        cmd.SafeAddParameter("ScopeId", scopeId)
+                           .SafeAddParameter("ClientId", clientId);
                     }
                     else
                     {
-                        cmd.AddParameter("IPAddress", ipAddress);
+                        cmd.SafeAddParameter("IPAddress", ipAddress);
                     }
                 }).ConfigureAwait(false);
             }

@@ -120,7 +120,7 @@ Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'DhcpWm
                         {
                             var queryTask = PowerShellExecutor.ExecutePowerShellQueryAsync(
                                 target,
-                                s => null,
+                                null,
                                 ps => { ps.AddScript(script); },
                                 dt =>
                                 {

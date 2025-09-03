@@ -20,7 +20,7 @@ namespace DhcpWmiViewer
         {
             try
             {
-                using (var ps = PowerShell.Create())
+                using (var ps = PowerShellInitializer.CreatePowerShell())
                 {
                     // Versuche Dienst zu finden (am zuverlässigsten)
                     ps.AddScript("Get-Service -Name 'DHCPServer' -ErrorAction SilentlyContinue | Select-Object -First 1");
@@ -69,7 +69,7 @@ namespace DhcpWmiViewer
                      targetHost.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase) ||
                      targetHost.Equals("localhost", StringComparison.OrdinalIgnoreCase)))
                 {
-                    using (var psLocal = PowerShell.Create())
+                    using (var psLocal = PowerShellInitializer.CreatePowerShell())
                     {
                         psLocal.AddScript(wrapperScript);
                         var localResults = psLocal.Invoke();
@@ -104,7 +104,7 @@ namespace DhcpWmiViewer
                 // Helper: Do a remote invoke with optional credential, and throw on ps.HadErrors
                 Collection<PSObject> DoRemoteInvoke(PSCredential? cred)
                 {
-                    using (var ps = PowerShell.Create())
+                    using (var ps = PowerShellInitializer.CreatePowerShell())
                     {
                         var sb = ScriptBlock.Create(remoteWrapped);
                         ps.AddCommand("Invoke-Command")
@@ -129,7 +129,7 @@ namespace DhcpWmiViewer
                 string[] firstErrors = Array.Empty<string>();
                 try
                 {
-                    using (var psTest = PowerShell.Create())
+                    using (var psTest = PowerShellInitializer.CreatePowerShell())
                     {
                         var sbTest = ScriptBlock.Create(remoteWrapped);
                         psTest.AddCommand("Invoke-Command")
@@ -166,13 +166,18 @@ namespace DhcpWmiViewer
 
                 if (getCredentials == null)
                 {
-                    throw new InvalidOperationException("Remote invocation failed (auth/transport). No credential callback available. Details: " + string.Join(" | ", firstErrors));
+                    // FALLBACK: Wenn kein Credential-Provider verfügbar ist, versuche ohne Credentials
+                    // Das kann passieren, wenn die Funktion direkt aufgerufen wird statt über ExecuteWithIntegratedAuthDetection
+                    var msg = $"Remote invocation failed (auth/transport). No credential callback available. Server='{server}', TargetHost='{targetHost}', LocalIsDhcpServer={localIsDhcpServer}. Details: " + string.Join(" | ", firstErrors);
+                    throw new InvalidOperationException(msg);
                 }
 
                 // Fordere Credentials an und versuche einmal neu
                 PSCredential? credRetry = null;
                 try
                 {
+                    if (string.IsNullOrWhiteSpace(targetHost))
+                        throw new ArgumentException("TargetHost is null or empty");
                     credRetry = getCredentials(targetHost);
                 }
                 catch (Exception credEx)
@@ -238,11 +243,16 @@ namespace DhcpWmiViewer
         /// </summary>
         public static async Task<DataTable> ExecutePowerShellQueryAsync(
             string server,
-            Func<string, PSCredential?> getCredentials,
+            Func<string, PSCredential?>? getCredentials,
             Action<PowerShell> buildPs,
             Action<DataTable> ensureSchema,
             bool isDynamic = false)
         {
+            if (buildPs == null)
+                throw new ArgumentNullException(nameof(buildPs));
+            if (ensureSchema == null)
+                throw new ArgumentNullException(nameof(ensureSchema));
+                
             using (var temp = PowerShell.Create())
             {
                 buildPs(temp);

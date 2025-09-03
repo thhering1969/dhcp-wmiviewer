@@ -11,7 +11,28 @@ namespace DhcpWmiViewer
         [STAThread]
         static void Main()
         {
-            // 1) App-weite Environment-Prüfung (z.B. ob wir lokal auf einem DHCP-Server laufen)
+            // 0) Konfiguration laden
+            try
+            {
+                AppConfig.Load();
+            }
+            catch
+            {
+                // Fehler beim Laden der Konfiguration ignorieren
+            }
+
+            // 1) PowerShell-Umgebung-Initialisierung - der neue PowerShellExecutor verwendet automatisch
+            // die beste verfügbare Methode (lokal oder remote)
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("PowerShell-Executor initialisiert - verwendet automatisch lokale oder remote Ausführung");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"PowerShell-Konfiguration-Warnung: {ex.Message}");
+            }
+
+            // 2) App-weite Environment-Prüfung (z.B. ob wir lokal auf einem DHCP-Server laufen)
             try
             {
                 AppEnvironment.Initialize();
@@ -21,7 +42,7 @@ namespace DhcpWmiViewer
                 // ignore initialization errors
             }
 
-            // 2) Optional: EventLogger.Init (falls Du eine zentrale EventLogger-Klasse benutzt).
+            // 3) Optional: EventLogger.Init (falls Du eine zentrale EventLogger-Klasse benutzt).
             // Achtung: CreateEventSource benötigt Admin-Rechte; EnsureEventSourceRegisteredBestEffort
             // in MainForm.Logging.cs ist so implementiert, dass Fehler geschluckt werden.
             try
@@ -34,6 +55,8 @@ namespace DhcpWmiViewer
                 // ignore
             }
 
+            // Ensure proper DPI scaling for WinForms controls
+            try { Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); } catch { /* not supported on some frameworks */ }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
@@ -44,6 +67,8 @@ namespace DhcpWmiViewer
                 var ex = e.ExceptionObject as Exception;
                 ShowAndLog("Unhandled Exception", ex);
             };
+
+            // 4) Administratorrechte prüfen wird in MainForm.Load gemacht für bessere Stabilität
 
             Application.Run(new MainForm());
         }

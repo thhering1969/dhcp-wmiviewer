@@ -36,8 +36,27 @@ namespace DhcpWmiViewer
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 10F);
 
+            // Fenster-Icon automatisch aus der EXE übernehmen (sofern vorhanden)
+            try { this.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { /* ignore */ }
+
             // Layout initialisieren (legt Controls an, verwendet Felder aus MainForm.Controls.cs)
             InitializeLayout();
+
+            // Administratorrechte prüfen (wichtig für DHCP-Verwaltung)
+            try
+            {
+                AdminRightsChecker.CheckAndWarnIfNotAdmin();
+            }
+            catch (Exception ex)
+            {
+                // Bei Fehlern in der Admin-Überprüfung: Warnung loggen aber fortfahren
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine($"AdminRightsChecker.CheckAndWarnIfNotAdmin failed: {ex}");
+                }
+                catch { }
+                // Nicht erneut werfen - Anwendung soll trotzdem starten
+            }
 
             // Debug-Modus Nachfrage (einfacher Prompt)
             try
@@ -259,7 +278,7 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Wrapper für DhcpManager-Aufrufe, der automatisch integrierte Authentifizierung erkennt
         /// </summary>
-        public async Task<T> ExecuteWithIntegratedAuthDetection<T>(string server, Func<string, Func<string, PSCredential?>, Task<T>> operation)
+        public async Task<T> ExecuteWithIntegratedAuthDetection<T>(string server, Func<string, Func<string, PSCredential?>?, Task<T>> operation)
         {
             // Null-Check für server-Parameter
             if (string.IsNullOrWhiteSpace(server))

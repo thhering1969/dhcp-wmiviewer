@@ -64,10 +64,11 @@ namespace DhcpWmiViewer
                     return;
                 }
 
-                // Decide firewall pool range: (your requirement: 192.168.116.180 - 192.168.116.254)
-                // You can compute this dynamically if needed; for now set constants (or fetch from config).
-                var firewallStart = "192.168.116.180";
-                var firewallEnd = "192.168.116.254";
+                // Ermittle Firewall-Bereiche aus AppConstants
+                var (firewallStart, firewallEnd) = AppConstants.GetCombinedFirewallRange();
+                var firewallDescription = AppConstants.InternetAllowedRangeString;
+                
+                Helpers.WriteDebugLog($"TRACE: Using firewall ranges: {firewallDescription}");
 
                 Helpers.WriteDebugLog("TRACE: Preparing to create ConvertLeaseToReservationDialog instance");
 

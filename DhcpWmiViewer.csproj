@@ -6,6 +6,18 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    
+    <!-- Single-File Deployment Konfiguration -->
+    <PublishSingleFile Condition="'$(Configuration)' == 'Release'">true</PublishSingleFile>
+    <SelfContained Condition="'$(Configuration)' == 'Release'">true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract Condition="'$(Configuration)' == 'Release'">true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract Condition="'$(Configuration)' == 'Release'">true</IncludeAllContentForSelfExtract>
+    
+    <!-- PowerShell SDK spezifische Einstellungen für Single-File -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,6 +25,8 @@
     <PackageReference Include="System.DirectoryServices" Version="9.0.8" />
     <PackageReference Include="System.Management" Version="9.0.8" />
   </ItemGroup>
+  
+
 
   <!-- Temporärer Ausschluss: alle diagnostics_*-Ordner vom Kompilieren ausschließen -->
   <ItemGroup>

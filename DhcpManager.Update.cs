@@ -27,18 +27,18 @@ namespace DhcpWmiViewer
                 {
                     ps.Commands.Clear();
                     var setCmd = ps.AddCommand("Set-DhcpServerv4Reservation")
-                                   .AddParameter("IPAddress", ipAddress)
-                                   .AddParameter("ErrorAction", "Stop");
+                                   .SafeAddParameter("IPAddress", ipAddress)
+                                   .SafeAddParameter("ErrorAction", "Stop");
 
                     if (!string.IsNullOrWhiteSpace(name))
-                        setCmd.AddParameter("Name", name);
+                        setCmd.SafeAddParameter("Name", name);
                     if (!string.IsNullOrWhiteSpace(description))
-                        setCmd.AddParameter("Description", description);
+                        setCmd.SafeAddParameter("Description", description);
                     if (!string.IsNullOrWhiteSpace(clientId))
-                        setCmd.AddParameter("ClientId", clientId);
+                        setCmd.SafeAddParameter("ClientId", clientId);
 
                     if (!string.IsNullOrWhiteSpace(server) && server != ".")
-                        setCmd.AddParameter("ComputerName", server);
+                        setCmd.SafeAddParameter("ComputerName", server);
                 }).ConfigureAwait(false);
             }
             catch (Exception ex)
