@@ -27,12 +27,12 @@ namespace DhcpWmiViewer
                 foreach (var s in servers) cmbDiscoveredServers.Items.Add(s);
 
                 // Entscheide appweit, ob wir lokal auf einem DHCP-Server laufen:
-                // Setze AppConstants.RunningOnDhcpServer = true, wenn entweder
+                // Setze AppEnvironment.RunningOnDhcpServer = true, wenn entweder
                 //  - die lokale Maschine in der entdeckten Serverliste enthalten ist (Hostname/Vergleich), oder
                 //  - ein lokaler DHCP-Server-Service läuft (best-effort)
                 bool localAppears = DhcpDiscovery.LocalHostAppearsInDiscovery(servers);
                 bool localService = DhcpDiscovery.CheckLocalDhcpServiceRunning();
-                AppConstants.RunningOnDhcpServer = localAppears || localService;
+                AppEnvironment.SetRunningOnDhcpServer(localAppears || localService);
 
                 if (cmbDiscoveredServers.Items.Count > 0)
                 {
@@ -41,7 +41,7 @@ namespace DhcpWmiViewer
                         txtServer.Text = cmbDiscoveredServers.SelectedItem.ToString() ?? Environment.MachineName;
                 }
 
-                UpdateStatus($"Found {servers.Count} DHCP server(s). RunningOnDhcpServer={AppConstants.RunningOnDhcpServer}");
+                UpdateStatus($"Found {servers.Count} DHCP server(s). RunningOnDhcpServer={AppEnvironment.RunningOnDhcpServer}");
             }
             catch (Exception ex)
             {

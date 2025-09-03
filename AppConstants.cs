@@ -18,10 +18,14 @@ namespace DhcpWmiViewer
 
         /// <summary>
         /// App-weite Flag, ob die Anwendung auf einem DHCP-Server läuft.
-        /// Default = false; kann beim Programmstart per InitializeRunningEnvironment gesetzt
-        /// oder später von der Discovery-Logik aktualisiert werden.
+        /// DEPRECATED: Use AppEnvironment.RunningOnDhcpServer instead for consistency.
         /// </summary>
-        public static bool RunningOnDhcpServer { get; set; } = false;
+        [Obsolete("Use AppEnvironment.RunningOnDhcpServer instead")]
+        public static bool RunningOnDhcpServer 
+        { 
+            get => AppEnvironment.RunningOnDhcpServer;
+            set => AppEnvironment.SetRunningOnDhcpServer(value);
+        }
 
         // --- Internet-erlaubte IP-Bereiche (Firewall-Bereiche) ---
         /// <summary>
@@ -218,28 +222,13 @@ namespace DhcpWmiViewer
 
         /// <summary>
         /// Optionale, leichte Initialisierung: kurzer Service-Check (best-effort).
-        /// Setzt RunningOnDhcpServer wenn ein DHCP-Serverdienst lokal vorhanden und running ist.
-        /// Fehler werden geschluckt; die Entdeckung per AD/Discover sollte zusätzlich entscheiden.
+        /// DEPRECATED: Use AppEnvironment.Initialize() instead.
         /// </summary>
+        [Obsolete("Use AppEnvironment.Initialize() instead")]
         public static void InitializeRunningEnvironment()
         {
-            try
-            {
-                // Minimaler best-effort check: delegiere an DhcpDiscovery (falls verfügbar)
-                // DhcpDiscovery.TryCheckLocalDhcpService ist robust gegen Fehler.
-                try
-                {
-                    RunningOnDhcpServer = DhcpDiscovery.CheckLocalDhcpServiceRunning();
-                }
-                catch
-                {
-                    RunningOnDhcpServer = false;
-                }
-            }
-            catch
-            {
-                RunningOnDhcpServer = false;
-            }
+            // Delegate to AppEnvironment for consistency
+            AppEnvironment.Initialize();
         }
     }
 }
