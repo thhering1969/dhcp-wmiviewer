@@ -13,11 +13,16 @@ namespace DhcpWmiViewer
     {
         /// <summary>
         /// Prüft, ob die aktuelle Maschine ein DHCP-Server ist.
-        /// Wir erkennen das, indem wir lokal nach dem Dienst "DHCPServer" suchen
-        /// oder nach dem Modul "DhcpServer".
+        /// Nutzt primär AppEnvironment.RunningOnDhcpServer (ServiceController-basiert),
+        /// mit PowerShell-basiertem Fallback für zusätzliche Validierung.
         /// </summary>
         private static bool IsLocalDhcpServer()
         {
+            // Primär: Nutze AppEnvironment-Erkennung (ServiceController-basiert)
+            if (AppEnvironment.RunningOnDhcpServer)
+                return true;
+
+            // Fallback: PowerShell-basierte Erkennung für zusätzliche Validierung
             try
             {
                 using (var ps = PowerShellInitializer.CreatePowerShell())
@@ -26,14 +31,22 @@ namespace DhcpWmiViewer
                     ps.AddScript("Get-Service -Name 'DHCPServer' -ErrorAction SilentlyContinue | Select-Object -First 1");
                     var svc = ps.Invoke();
                     if (svc != null && svc.Count > 0)
+                    {
+                        // Update AppEnvironment wenn PowerShell einen DHCP-Server findet
+                        AppEnvironment.SetRunningOnDhcpServer(true);
                         return true;
+                    }
 
                     ps.Commands.Clear();
                     // Fallback: Modul prüfen
                     ps.AddScript("Get-Module -ListAvailable DhcpServer | Select-Object -First 1");
                     var mod = ps.Invoke();
                     if (mod != null && mod.Count > 0)
+                    {
+                        // Update AppEnvironment wenn PowerShell-Modul verfügbar ist
+                        AppEnvironment.SetRunningOnDhcpServer(true);
                         return true;
+                    }
                 }
             }
             catch
