@@ -39,8 +39,7 @@ namespace DhcpWmiViewer
                 menuItemChangeReservation.Click += async (s, e) => await OnChangeComputerReservation();
                 menuItemShowDhcpInfo.Click += async (s, e) => await OnShowComputerDhcpInfo();
 
-                // Context-Menü Opening Event - sofortige Anzeige, asynchrone DHCP-Suche
-                contextMenuAD.Opening += (s, e) => OnADContextMenuOpening(contextMenuAD);
+                // Opening Event wird jetzt vom Haupt-Handler in Layout.cs aufgerufen
             }
             catch (Exception ex)
             {
@@ -51,13 +50,23 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Wird aufgerufen bevor Context-Menü geöffnet wird - zeigt sofort Menü an und lädt DHCP-Info asynchron nach
         /// </summary>
-        private void OnADContextMenuOpening(ContextMenuStrip contextMenu)
+        public void OnADContextMenuOpening(ContextMenuStrip contextMenu)
         {
             try
             {
                 // Hole Computer-Node
                 var selectedNode = treeViewAD?.SelectedNode;
                 var computerItem = selectedNode?.Tag as ADTreeItem;
+                
+                // Debug: Highlight which object is in context focus
+                if (selectedNode != null)
+                {
+                    var nodeType = computerItem?.IsComputer == true ? "Computer" : 
+                                   computerItem?.IsOU == true ? "OU" : "Unknown";
+                    DebugLogger.LogFormat("AD Context Menu opened for {0}: '{1}' (Path: {2})", 
+                                        nodeType, computerItem?.Name ?? selectedNode.Text, 
+                                        computerItem?.DistinguishedName ?? selectedNode.FullPath);
+                }
                 
                 // DHCP-Menüpunkte finden
                 var convertLeaseItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Convert Lease"));
@@ -84,6 +93,7 @@ namespace DhcpWmiViewer
                 // Nur für Computer-Nodes - zeige Loading-Status und starte Background-Suche
                 if (computerItem != null && computerItem.IsComputer)
                 {
+                    DebugLogger.LogFormat("Showing DHCP menu items for computer: {0}", computerItem.Name);
                     // Zeige erstmal Loading-Status
                     if (convertLeaseItem != null) 
                     {
@@ -106,6 +116,11 @@ namespace DhcpWmiViewer
 
                     // Starte DHCP-Suche im Hintergrund (fire & forget)
                     _ = Task.Run(async () => await UpdateDhcpMenuItemsAsync(contextMenu, computerItem.Name));
+                }
+                else
+                {
+                    DebugLogger.LogFormat("DHCP menu items NOT shown - computerItem: {0}, IsComputer: {1}",
+                                        computerItem?.Name ?? "null", computerItem?.IsComputer ?? false);
                 }
             }
             catch (Exception ex)

@@ -588,13 +588,16 @@ namespace DhcpWmiViewer
             menuItemExpandAll.Click += (s, e) => treeViewAD.ExpandAll();
             menuItemCollapseAll.Click += (s, e) => treeViewAD.CollapseAll();
 
-            // Context-Menu öffnen Event
+            // Context-Menu öffnen Event - integriert mit DHCP-Funktionalität
             contextMenuAD.Opening += (s, e) =>
             {
                 var selectedItem = treeViewAD.SelectedNode?.Tag as ADTreeItem;
                 menuItemRefreshOU.Visible = selectedItem?.IsOU == true;
                 menuItemShowComputers.Visible = selectedItem?.IsOU == true;
                 menuItemPingComputer.Visible = selectedItem?.IsComputer == true;
+                
+                // DHCP Context Menu Integration aufrufen
+                OnADContextMenuOpening(contextMenuAD);
             };
 
             contextMenuAD.Items.Add(menuItemRefreshOU);
