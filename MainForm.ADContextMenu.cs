@@ -1,5 +1,6 @@
 // MainForm.ADContextMenu.cs
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,6 +10,10 @@ namespace DhcpWmiViewer
 {
     public partial class MainForm
     {
+        // Cache für DHCP-Status um wiederholte Suchen zu vermeiden
+        private readonly Dictionary<string, (ComputerDhcpStatus Status, DateTime CachedAt)> _dhcpStatusCache = new();
+        private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(2);
+
         /// <summary>
         /// Erweitert das bestehende AD Context-Menü um DHCP-spezifische Funktionen
         /// </summary>
@@ -34,8 +39,8 @@ namespace DhcpWmiViewer
                 menuItemChangeReservation.Click += async (s, e) => await OnChangeComputerReservation();
                 menuItemShowDhcpInfo.Click += async (s, e) => await OnShowComputerDhcpInfo();
 
-                // Context-Menü Opening Event - zeigt nur relevante Menüpunkte
-                contextMenuAD.Opening += async (s, e) => await OnADContextMenuOpening(contextMenuAD);
+                // Context-Menü Opening Event - sofortige Anzeige, asynchrone DHCP-Suche
+                contextMenuAD.Opening += (s, e) => OnADContextMenuOpening(contextMenuAD);
             }
             catch (Exception ex)
             {
@@ -44,9 +49,9 @@ namespace DhcpWmiViewer
         }
 
         /// <summary>
-        /// Wird aufgerufen bevor Context-Menü geöffnet wird - konfiguriert DHCP-Menüpunkte dynamisch
+        /// Wird aufgerufen bevor Context-Menü geöffnet wird - zeigt sofort Menü an und lädt DHCP-Info asynchron nach
         /// </summary>
-        private async Task OnADContextMenuOpening(ContextMenuStrip contextMenu)
+        private void OnADContextMenuOpening(ContextMenuStrip contextMenu)
         {
             try
             {
@@ -54,43 +59,170 @@ namespace DhcpWmiViewer
                 var selectedNode = treeViewAD?.SelectedNode;
                 var computerItem = selectedNode?.Tag as ADTreeItem;
                 
-                // Standard: Alle DHCP-Menüpunkte ausblenden
+                // DHCP-Menüpunkte finden
                 var convertLeaseItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Convert Lease"));
                 var changeReservationItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Change Reservation"));
                 var showInfoItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("DHCP Info"));
 
-                if (convertLeaseItem != null) convertLeaseItem.Visible = false;
-                if (changeReservationItem != null) changeReservationItem.Visible = false;
-                if (showInfoItem != null) showInfoItem.Visible = false;
-
-                // Nur für Computer-Nodes
-                if (computerItem == null || !computerItem.IsComputer)
-                    return;
-
-                // Quick DHCP Status Check (ohne UI-Blocking)
-                var dhcpStatus = await GetComputerDhcpStatusAsync(computerItem.Name);
-                
-                // Menüpunkte basierend auf DHCP-Status konfigurieren
-                if (dhcpStatus.HasLease && convertLeaseItem != null)
+                // Standard: Alle DHCP-Menüpunkte ausblenden
+                if (convertLeaseItem != null) 
                 {
-                    convertLeaseItem.Visible = true;
-                    convertLeaseItem.Text = $"🔄 Convert Lease to Reservation ({dhcpStatus.LeaseIP})";
+                    convertLeaseItem.Visible = false;
+                    convertLeaseItem.Enabled = false;
+                }
+                if (changeReservationItem != null) 
+                {
+                    changeReservationItem.Visible = false; 
+                    changeReservationItem.Enabled = false;
+                }
+                if (showInfoItem != null) 
+                {
+                    showInfoItem.Visible = false;
+                    showInfoItem.Enabled = false;
                 }
 
-                if (dhcpStatus.HasReservation && changeReservationItem != null)
+                // Nur für Computer-Nodes - zeige Loading-Status und starte Background-Suche
+                if (computerItem != null && computerItem.IsComputer)
                 {
-                    changeReservationItem.Visible = true;
-                    changeReservationItem.Text = $"⚙️ Change Reservation ({dhcpStatus.ReservationIP})";
-                }
+                    // Zeige erstmal Loading-Status
+                    if (convertLeaseItem != null) 
+                    {
+                        convertLeaseItem.Text = "🔄 Convert Lease to Reservation (Checking...)";
+                        convertLeaseItem.Visible = true;
+                        convertLeaseItem.Enabled = false;
+                    }
+                    if (changeReservationItem != null) 
+                    {
+                        changeReservationItem.Text = "⚙️ Change Reservation (Checking...)";
+                        changeReservationItem.Visible = true;
+                        changeReservationItem.Enabled = false;
+                    }
+                    if (showInfoItem != null) 
+                    {
+                        showInfoItem.Text = "ℹ️ Show DHCP Info (Loading...)";
+                        showInfoItem.Visible = true;
+                        showInfoItem.Enabled = false;
+                    }
 
-                if (showInfoItem != null && (dhcpStatus.HasLease || dhcpStatus.HasReservation))
-                {
-                    showInfoItem.Visible = true;
+                    // Starte DHCP-Suche im Hintergrund (fire & forget)
+                    _ = Task.Run(async () => await UpdateDhcpMenuItemsAsync(contextMenu, computerItem.Name));
                 }
             }
             catch (Exception ex)
             {
                 DebugLogger.LogFormat("Error in AD context menu opening: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Aktualisiert DHCP-Menüpunkte asynchron basierend auf DHCP-Status
+        /// </summary>
+        private async Task UpdateDhcpMenuItemsAsync(ContextMenuStrip contextMenu, string computerName)
+        {
+            try
+            {
+                // Prüfe Cache zuerst
+                ComputerDhcpStatus dhcpStatus;
+                var cacheKey = computerName.ToLowerInvariant();
+                
+                if (_dhcpStatusCache.TryGetValue(cacheKey, out var cachedEntry) && 
+                    DateTime.Now - cachedEntry.CachedAt < _cacheExpiration)
+                {
+                    // Verwende Cache
+                    dhcpStatus = cachedEntry.Status;
+                    DebugLogger.LogFormat("Using cached DHCP status for computer: {0}", computerName);
+                }
+                else
+                {
+                    // DHCP Status abrufen (kann dauern)
+                    dhcpStatus = await GetComputerDhcpStatusAsync(computerName);
+                    
+                    // In Cache speichern
+                    _dhcpStatusCache[cacheKey] = (dhcpStatus, DateTime.Now);
+                }
+                
+                // UI-Thread für Menü-Updates
+                if (contextMenu.IsDisposed) return; // Safety check
+
+                this.Invoke(new Action(() =>
+                {
+                    try
+                    {
+                        var convertLeaseItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Convert Lease"));
+                        var changeReservationItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Change Reservation"));
+                        var showInfoItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("DHCP Info"));
+
+                        // Configure basierend auf DHCP-Status
+                        if (convertLeaseItem != null)
+                        {
+                            if (dhcpStatus.HasLease)
+                            {
+                                convertLeaseItem.Text = $"🔄 Convert Lease to Reservation ({dhcpStatus.LeaseIP})";
+                                convertLeaseItem.Visible = true;
+                                convertLeaseItem.Enabled = true;
+                            }
+                            else
+                            {
+                                convertLeaseItem.Visible = false;
+                            }
+                        }
+
+                        if (changeReservationItem != null)
+                        {
+                            if (dhcpStatus.HasReservation)
+                            {
+                                changeReservationItem.Text = $"⚙️ Change Reservation ({dhcpStatus.ReservationIP})";
+                                changeReservationItem.Visible = true;
+                                changeReservationItem.Enabled = true;
+                            }
+                            else
+                            {
+                                changeReservationItem.Visible = false;
+                            }
+                        }
+
+                        if (showInfoItem != null)
+                        {
+                            if (dhcpStatus.HasLease || dhcpStatus.HasReservation)
+                            {
+                                showInfoItem.Text = "ℹ️ Show DHCP Info";
+                                showInfoItem.Visible = true;
+                                showInfoItem.Enabled = true;
+                            }
+                            else
+                            {
+                                showInfoItem.Text = "ℹ️ Show DHCP Info (No DHCP data found)";
+                                showInfoItem.Visible = true;
+                                showInfoItem.Enabled = false;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.LogFormat("Error updating DHCP menu items on UI thread: {0}", ex.Message);
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("Error updating DHCP menu items: {0}", ex.Message);
+                
+                // Bei Fehler - deaktiviere Menüpunkte
+                if (!contextMenu.IsDisposed)
+                {
+                    this.Invoke(new Action(() =>
+                    {
+                        var items = contextMenu.Items.OfType<ToolStripMenuItem>().Where(x => 
+                            x.Text.Contains("Convert Lease") || 
+                            x.Text.Contains("Change Reservation") || 
+                            x.Text.Contains("DHCP Info"));
+                        
+                        foreach (var item in items)
+                        {
+                            item.Visible = false;
+                        }
+                    }));
+                }
             }
         }
 
