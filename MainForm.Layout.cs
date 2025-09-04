@@ -314,6 +314,7 @@ namespace DhcpWmiViewer
             tabReservations = new TabPage("Reservations");
             tabLeases = new TabPage("Leases");
             var tabEvents = new TabPage("Events");
+            tabActiveDirectory = new TabPage("Active Directory");
 
             tabReservations.Controls.Add(dgvReservations);
             tabLeases.Controls.Add(dgvLeases);
@@ -439,14 +440,222 @@ namespace DhcpWmiViewer
 
             tabEvents.Controls.Add(eventsPanel);
 
+            // --- Active Directory tab ---
+            var adPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(4) };
+
+            // AD Top-Leiste mit Buttons und Status - sehr kompakt
+            var adTop = new Panel { Dock = DockStyle.Top, Height = 30, Padding = new Padding(2) };
+
+            var adTopInner = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                AutoSize = false,
+                Height = 26,
+                WrapContents = false
+            };
+
+            btnLoadAD = new Button { Text = "🔍", Size = new Size(24, 22), Font = new Font(Font.FontFamily, Font.Size), Margin = new Padding(2, 2, 4, 2) };
+            btnRefreshAD = new Button { Text = "🌳", Size = new Size(24, 22), Enabled = false, Font = new Font(Font.FontFamily, Font.Size), Margin = new Padding(2, 2, 4, 2) };
+            btnRefreshOnlineStatus = new Button { Text = "💻", Size = new Size(24, 22), Enabled = false, Font = new Font(Font.FontFamily, Font.Size), Margin = new Padding(2, 2, 4, 2) };
+            lblADStatus = new Label { Text = "Ready - Click 🔍 to discover DCs or select tab to auto-start", AutoSize = true, Padding = new Padding(4, 4, 4, 0), ForeColor = SystemColors.ControlDarkDark, Font = new Font(Font.FontFamily, Font.Size - 1f, FontStyle.Italic) };
+
+            // ComboBox für DC-Auswahl - kompakt
+            cmbDomainControllers = new ComboBox 
+            { 
+                DropDownStyle = ComboBoxStyle.DropDownList, 
+                Width = 180, 
+                Height = 22,
+                Margin = new Padding(2, 2, 6, 2),
+                Font = new Font(Font.FontFamily, Font.Size - 0.5f)
+            };
+
+            // Event-Handler für Buttons
+            btnLoadAD.Click += async (s, e) =>
+            {
+                await LoadDomainControllersAsync(cmbDomainControllers);
+            };
+
+            btnRefreshAD.Click += async (s, e) =>
+            {
+                var selectedDC = cmbDomainControllers.SelectedItem?.ToString();
+                if (!string.IsNullOrEmpty(selectedDC))
+                {
+                    await LoadADStructureAsync(selectedDC);
+                }
+            };
+
+            btnRefreshOnlineStatus.Click += (s, e) =>
+            {
+                RefreshOnlineStatus();
+            };
+
+            cmbDomainControllers.SelectedIndexChanged += (s, e) =>
+            {
+                btnRefreshAD.Enabled = cmbDomainControllers.SelectedItem != null;
+                btnRefreshOnlineStatus.Enabled = cmbDomainControllers.SelectedItem != null && treeViewAD.Nodes.Count > 0;
+            };
+
+            // ToolTips für Buttons
+            var toolTip = new ToolTip();
+            toolTip.SetToolTip(btnLoadAD, "Discover Domain Controllers");
+            toolTip.SetToolTip(btnRefreshAD, "Load AD Tree Structure");
+            toolTip.SetToolTip(btnRefreshOnlineStatus, "Refresh Online Status (Ping all computers)");
+            toolTip.SetToolTip(cmbDomainControllers, "Select Domain Controller");
+
+            adTopInner.Controls.Add(btnLoadAD);
+            adTopInner.Controls.Add(cmbDomainControllers);
+            adTopInner.Controls.Add(btnRefreshAD);
+            adTopInner.Controls.Add(btnRefreshOnlineStatus);
+            adTopInner.Controls.Add(lblADStatus);
+            adTop.Controls.Add(adTopInner);
+            adPanel.Controls.Add(adTop);
+
+            // TreeView für AD-Struktur - mit expliziter Größe und Position
+            treeViewAD = new TreeView
+            {
+                Dock = DockStyle.Fill,
+                ShowLines = true,
+                ShowPlusMinus = true,
+                ShowRootLines = true,
+                HideSelection = false,
+                FullRowSelect = true,
+                ImageList = null,
+                Font = new Font("Segoe UI", Font.Size, FontStyle.Regular),
+                BackColor = SystemColors.Window,
+                ForeColor = SystemColors.WindowText,
+                BorderStyle = BorderStyle.Fixed3D,
+                ItemHeight = 20,
+                Indent = 16,
+                ShowNodeToolTips = true,
+                DrawMode = TreeViewDrawMode.OwnerDrawText, // Custom Drawing aktiviert
+                Scrollable = true,
+                // Explizite Größen-Einstellungen
+                MinimumSize = new Size(200, 100),
+                AutoSize = false
+            };
+
+            // Custom Drawing Event Handler
+            treeViewAD.DrawNode += TreeViewAD_DrawNode;
+
+            // Context Menu für TreeView
+            var contextMenuAD = new ContextMenuStrip();
+            var menuItemRefreshOU = new ToolStripMenuItem("Refresh OU");
+            var menuItemShowComputers = new ToolStripMenuItem("Show Computers in Dialog");
+            var menuItemPingComputer = new ToolStripMenuItem("Ping Computer");
+            var menuItemExpandAll = new ToolStripMenuItem("Expand All");
+            var menuItemCollapseAll = new ToolStripMenuItem("Collapse All");
+
+            menuItemRefreshOU.Click += async (s, e) =>
+            {
+                if (treeViewAD.SelectedNode?.Tag is ADTreeItem item && item.IsOU)
+                {
+                    // Konvertiere zu ADOrganizationalUnit für Kompatibilität
+                    var ou = new ADOrganizationalUnit
+                    {
+                        Name = item.Name,
+                        DistinguishedName = item.DistinguishedName,
+                        Description = item.Description,
+                        ComputerCount = item.ComputerCount
+                    };
+                    await RefreshOUAsync(treeViewAD.SelectedNode, ou);
+                }
+            };
+
+            menuItemShowComputers.Click += async (s, e) =>
+            {
+                if (treeViewAD.SelectedNode?.Tag is ADTreeItem item && item.IsOU)
+                {
+                    var ou = new ADOrganizationalUnit
+                    {
+                        Name = item.Name,
+                        DistinguishedName = item.DistinguishedName,
+                        Description = item.Description,
+                        ComputerCount = item.ComputerCount
+                    };
+                    await ShowComputersInOUAsync(ou);
+                }
+            };
+
+            menuItemPingComputer.Click += async (s, e) =>
+            {
+                if (treeViewAD.SelectedNode?.Tag is ADTreeItem item && item.IsComputer)
+                {
+                    await PingComputerAsync(item.Name);
+                }
+            };
+
+            menuItemExpandAll.Click += (s, e) => treeViewAD.ExpandAll();
+            menuItemCollapseAll.Click += (s, e) => treeViewAD.CollapseAll();
+
+            // Context-Menu öffnen Event
+            contextMenuAD.Opening += (s, e) =>
+            {
+                var selectedItem = treeViewAD.SelectedNode?.Tag as ADTreeItem;
+                menuItemRefreshOU.Visible = selectedItem?.IsOU == true;
+                menuItemShowComputers.Visible = selectedItem?.IsOU == true;
+                menuItemPingComputer.Visible = selectedItem?.IsComputer == true;
+            };
+
+            contextMenuAD.Items.Add(menuItemRefreshOU);
+            contextMenuAD.Items.Add(menuItemShowComputers);
+            contextMenuAD.Items.Add(menuItemPingComputer);
+            contextMenuAD.Items.Add(new ToolStripSeparator());
+            contextMenuAD.Items.Add(menuItemExpandAll);
+            contextMenuAD.Items.Add(menuItemCollapseAll);
+
+            treeViewAD.ContextMenuStrip = contextMenuAD;
+
+            // TreeView Event-Handler
+            treeViewAD.NodeMouseDoubleClick += async (s, e) =>
+            {
+                if (e.Node?.Tag is ADTreeItem item)
+                {
+                    if (item.IsOU)
+                    {
+                        var ou = new ADOrganizationalUnit
+                        {
+                            Name = item.Name,
+                            DistinguishedName = item.DistinguishedName,
+                            Description = item.Description,
+                            ComputerCount = item.ComputerCount
+                        };
+                        await ShowComputersInOUAsync(ou);
+                    }
+                    else if (item.IsComputer)
+                    {
+                        await PingComputerAsync(item.Name);
+                    }
+                }
+            };
+
+            // TreeView in separatem Container für bessere Layout-Kontrolle
+            var treeContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(2),
+                BackColor = Color.LightBlue  // Debug: Sichtbare Hintergrundfarbe
+            };
+            treeContainer.Controls.Add(treeViewAD);
+            
+            // Stelle sicher, dass treeContainer nach adTop hinzugefügt wird
+            adPanel.Controls.Add(treeContainer);
+            
+            // Debug: Zeige Layout-Informationen
+            DebugLogger.LogFormat("AD Panel Controls: {0}", adPanel.Controls.Count);
+            DebugLogger.LogFormat("TreeContainer added to adPanel. Dock: {0}, Size: {1}", treeContainer.Dock, treeContainer.Size);
+            DebugLogger.LogFormat("TreeViewAD added to treeContainer. Dock: {0}, Size: {1}", treeViewAD.Dock, treeViewAD.Size);
+            tabActiveDirectory.Controls.Add(adPanel);
+
             tabs.TabPages.Add(tabReservations);
             tabs.TabPages.Add(tabLeases);
             tabs.TabPages.Add(tabEvents);
+            tabs.TabPages.Add(tabActiveDirectory);
 
             // --- Robustheits- und Sichtbarkeits-Helpers für Events ---
             eventsPanel.MinimumSize = new Size(300, 160);
 
-            tabs.SelectedIndexChanged += (s, e) =>
+            tabs.SelectedIndexChanged += async (s, e) =>
             {
                 try
                 {
@@ -461,6 +670,41 @@ namespace DhcpWmiViewer
                             }
                         }
                         catch { /* ignore */ }
+                    }
+                    else if (tabs.SelectedTab == tabActiveDirectory && !adTabInitialized)
+                    {
+                        // Automatisches Laden beim ersten Öffnen des AD Tabs
+                        adTabInitialized = true;
+                        try
+                        {
+                            lblADStatus.Text = "Auto-discovering Domain Controllers...";
+                            lblADStatus.ForeColor = System.Drawing.Color.Blue;
+                            
+                            // Lade Domain Controllers
+                            await LoadDomainControllersAsync(cmbDomainControllers);
+                            
+                            // Wenn DCs gefunden wurden, lade automatisch die AD-Struktur
+                            if (cmbDomainControllers.Items.Count > 0 && cmbDomainControllers.SelectedItem != null)
+                            {
+                                var selectedDC = cmbDomainControllers.SelectedItem.ToString();
+                                if (!string.IsNullOrEmpty(selectedDC))
+                                {
+                                    lblADStatus.Text = $"Loading AD tree structure from {selectedDC}...";
+                                    lblADStatus.ForeColor = System.Drawing.Color.Blue;
+                                    await LoadADStructureAsync(selectedDC);
+                                }
+                            }
+                            else
+                            {
+                                lblADStatus.Text = "No Domain Controllers found. Click 'Discover' to search manually.";
+                                lblADStatus.ForeColor = System.Drawing.Color.Orange;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            lblADStatus.Text = $"Auto-initialization failed: {ex.Message}";
+                            lblADStatus.ForeColor = System.Drawing.Color.Red;
+                        }
                     }
                 }
                 catch { /* ignore */ }

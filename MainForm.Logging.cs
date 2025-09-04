@@ -70,8 +70,11 @@ namespace DhcpWmiViewer
         /// </summary>
         public async Task LogGuiEventAsync(string action, string scopeId = "", string ip = "", string details = "")
         {
-            try
+            using (DebugLogger.MeasurePerformance("LogGuiEventAsync"))
             {
+                try
+                {
+                    DebugLogger.LogDebug($"Remote-Logging gestartet: Action={action}, Scope={scopeId}, IP={ip}");
                 var sb = new StringBuilder();
                 sb.Append($"Action={action};");
                 if (!string.IsNullOrEmpty(scopeId)) sb.Append($"Scope={scopeId};");
@@ -85,6 +88,7 @@ namespace DhcpWmiViewer
                 var server = GetServerNameOrDefault();
                 if (string.IsNullOrWhiteSpace(server) || server == "." || server.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
                 {
+                    DebugLogger.LogDebug($"Kein Remote-Server-Ziel verfügbar: {server}");
                     SafeWriteFallback("No remote server target for LogGuiEvent. payload: " + message);
                     return;
                 }
@@ -120,18 +124,27 @@ namespace DhcpWmiViewer
                 {
                     bool ok = await WriteEventRemoteViaInvokeCommandAsync(server, message).ConfigureAwait(false);
                     if (!ok)
+                    {
+                        DebugLogger.LogDebug($"Remote-Schreibvorgang fehlgeschlagen für {server}");
                         SafeWriteFallback($"Remote write attempt failed for {server}. payload: {message}");
+                    }
                     else
+                    {
+                        DebugLogger.LogDebug($"Remote-Schreibvorgang erfolgreich für {server}");
                         SafeWriteFallback($"RemoteWriteSuccess to {server}: {message}");
+                    }
                 }
                 catch (Exception exRemote)
                 {
+                    DebugLogger.LogError("Remote-Schreibvorgang Exception", exRemote);
                     SafeWriteFallback("Remote write outer exception: " + exRemote.ToString() + " | payload: " + message);
                 }
             }
             catch (Exception ex)
             {
+                DebugLogger.LogError("LogGuiEventAsync fehlgeschlagen", ex);
                 SafeWriteFallback("LogGuiEventAsync failed: " + ex.ToString());
+            }
             }
         }
 

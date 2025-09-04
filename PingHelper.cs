@@ -7,6 +7,17 @@ using System.Threading.Tasks;
 
 namespace DhcpWmiViewer
 {
+    /// <summary>
+    /// Ergebnis eines Ping-Vorgangs.
+    /// </summary>
+    public class PingResult
+    {
+        public bool Success { get; set; }
+        public long RoundtripTime { get; set; }
+        public IPStatus Status { get; set; }
+        public string ErrorMessage { get; set; } = "";
+    }
+
     public static class PingHelper
     {
         /// <summary>
@@ -45,6 +56,48 @@ namespace DhcpWmiViewer
                 // bei allen anderen Fehlern: false zurückgeben (robust für UI)
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Ping mit detailliertem Ergebnis.
+        /// </summary>
+        public static async Task<PingResult> PingAsync(string hostOrIp, int timeoutMs = 5000)
+        {
+            var result = new PingResult();
+            
+            if (string.IsNullOrWhiteSpace(hostOrIp))
+            {
+                result.ErrorMessage = "Host or IP address is empty";
+                return result;
+            }
+
+            using var ping = new Ping();
+            try
+            {
+                var reply = await ping.SendPingAsync(hostOrIp, timeoutMs);
+                
+                if (reply != null)
+                {
+                    result.Success = reply.Status == IPStatus.Success;
+                    result.RoundtripTime = reply.RoundtripTime;
+                    result.Status = reply.Status;
+                    
+                    if (!result.Success)
+                    {
+                        result.ErrorMessage = reply.Status.ToString();
+                    }
+                }
+                else
+                {
+                    result.ErrorMessage = "No reply received";
+                }
+            }
+            catch (Exception ex)
+            {
+                result.ErrorMessage = ex.Message;
+            }
+
+            return result;
         }
     }
 }

@@ -45,5 +45,15 @@ namespace DhcpWmiViewer
         // Tab references for dynamic text updates
         private TabPage tabLeases = null!;
         private TabPage tabReservations = null!;
+        private TabPage tabActiveDirectory = null!;
+        
+        // Active Directory controls
+        private TreeView treeViewAD = null!;
+        private Button btnLoadAD = null!;
+        private Button btnRefreshAD = null!;
+        private Button btnRefreshOnlineStatus = null!;
+        private Label lblADStatus = null!;
+        private ComboBox cmbDomainControllers = null!;
+        private bool adTabInitialized = false;
     }
 }
