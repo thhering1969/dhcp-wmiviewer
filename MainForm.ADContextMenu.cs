@@ -72,6 +72,22 @@ namespace DhcpWmiViewer
                                     selectedNode?.Text ?? "null", 
                                     selectedNode?.Tag?.GetType().Name ?? "null");
                 
+                // Debug: TreeView Node Details
+                if (selectedNode != null)
+                {
+                    DebugLogger.LogFormat("TreeView Node Details:");
+                    DebugLogger.LogFormat("  Node.Text: '{0}'", selectedNode.Text);
+                    DebugLogger.LogFormat("  Node.Name: '{0}'", selectedNode.Name ?? "empty");
+                    DebugLogger.LogFormat("  Node.FullPath: '{0}'", selectedNode.FullPath ?? "null");
+                    DebugLogger.LogFormat("  Node.Tag: {0}", selectedNode.Tag != null ? "exists" : "null");
+                    
+                    if (selectedNode.Tag != null)
+                    {
+                        DebugLogger.LogFormat("  Tag.GetType(): {0}", selectedNode.Tag.GetType().Name);
+                        DebugLogger.LogFormat("  Tag.ToString(): '{0}'", selectedNode.Tag.ToString() ?? "null");
+                    }
+                }
+                
                 // Debug: Highlight which object is in context focus
                 if (selectedNode != null)
                 {
@@ -120,28 +136,55 @@ namespace DhcpWmiViewer
                     showInfoItem.Enabled = false;
                 }
 
+                // Computer-Node Detection Debug
+                DebugLogger.LogFormat("=== COMPUTER DETECTION ANALYSIS ===");
+                DebugLogger.LogFormat("  selectedNode != null: {0}", selectedNode != null);
+                DebugLogger.LogFormat("  computerItem != null: {0}", computerItem != null);
+                if (computerItem != null)
+                {
+                    DebugLogger.LogFormat("  computerItem.Name: '{0}'", computerItem.Name ?? "null");
+                    DebugLogger.LogFormat("  computerItem.IsComputer: {0}", computerItem.IsComputer);
+                    DebugLogger.LogFormat("  computerItem.IsOU: {0}", computerItem.IsOU);
+                    DebugLogger.LogFormat("  computerItem.DistinguishedName: '{0}'", computerItem.DistinguishedName ?? "null");
+                }
+
                 // Nur für Computer-Nodes - zeige Loading-Status und starte Background-Suche
                 if (computerItem != null && computerItem.IsComputer)
                 {
-                    DebugLogger.LogFormat("Showing DHCP menu items for computer: {0}", computerItem.Name);
+                    DebugLogger.LogFormat("✅ COMPUTER NODE DETECTED - Showing DHCP menu items for: {0}", computerItem.Name);
                     // Zeige erstmal Loading-Status
                     if (convertLeaseItem != null) 
                     {
                         convertLeaseItem.Text = "🔄 Convert Lease to Reservation (Checking...)";
                         convertLeaseItem.Visible = true;
                         convertLeaseItem.Enabled = false;
+                        DebugLogger.LogFormat("  ✅ Convert Lease item made VISIBLE");
+                    }
+                    else
+                    {
+                        DebugLogger.LogFormat("  ❌ Convert Lease item NOT FOUND in menu");
                     }
                     if (changeReservationItem != null) 
                     {
                         changeReservationItem.Text = "⚙️ Change Reservation (Checking...)";
                         changeReservationItem.Visible = true;
                         changeReservationItem.Enabled = false;
+                        DebugLogger.LogFormat("  ✅ Change Reservation item made VISIBLE");
+                    }
+                    else
+                    {
+                        DebugLogger.LogFormat("  ❌ Change Reservation item NOT FOUND in menu");
                     }
                     if (showInfoItem != null) 
                     {
                         showInfoItem.Text = "ℹ️ Show DHCP Info (Loading...)";
                         showInfoItem.Visible = true;
                         showInfoItem.Enabled = false;
+                        DebugLogger.LogFormat("  ✅ DHCP Info item made VISIBLE");
+                    }
+                    else
+                    {
+                        DebugLogger.LogFormat("  ❌ DHCP Info item NOT FOUND in menu");
                     }
 
                     // Starte DHCP-Suche im Hintergrund (fire & forget)
@@ -149,8 +192,13 @@ namespace DhcpWmiViewer
                 }
                 else
                 {
-                    DebugLogger.LogFormat("DHCP menu items NOT shown - computerItem: {0}, IsComputer: {1}",
-                                        computerItem?.Name ?? "null", computerItem?.IsComputer ?? false);
+                    DebugLogger.LogFormat("❌ NOT A COMPUTER NODE - DHCP menu items HIDDEN");
+                    DebugLogger.LogFormat("  Reason: computerItem == null: {0}", computerItem == null);
+                    if (computerItem != null)
+                    {
+                        DebugLogger.LogFormat("  Reason: computerItem.IsComputer == false: {0}", !computerItem.IsComputer);
+                        DebugLogger.LogFormat("  Note: computerItem.IsOU: {0}", computerItem.IsOU);
+                    }
                 }
             }
             catch (Exception ex)
