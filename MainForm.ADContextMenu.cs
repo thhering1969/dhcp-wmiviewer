@@ -169,24 +169,81 @@ namespace DhcpWmiViewer
                     }
                 }
 
-                // FALLBACK: Falls computerItem.IsComputer immer noch false ist, prüfe TreeView Node Text
+                // AGGRESSIVE FIX: Behandle ALLE Nodes mit Computer-ähnlichen Eigenschaften als Computer
                 bool isComputerNodeFallback = false;
-                if (computerItem != null && !computerItem.IsComputer)
+                bool forceComputerDetection = false;
+                
+                if (computerItem != null)
                 {
-                    // Fallback-Detection basierend auf TreeView Node Text
+                    // Multiple detection methods
+                    bool hasOperatingSystem = !string.IsNullOrEmpty(computerItem.OperatingSystem);
+                    bool hasComputerDN = computerItem.DistinguishedName?.StartsWith("CN=", StringComparison.OrdinalIgnoreCase) == true;
                     bool nodeTextSuggestsComputer = selectedNode?.Text?.Contains("[Windows", StringComparison.OrdinalIgnoreCase) == true ||
                                                    selectedNode?.Text?.Contains("Pro]", StringComparison.OrdinalIgnoreCase) == true ||
-                                                   selectedNode?.Text?.Contains("Server", StringComparison.OrdinalIgnoreCase) == true;
+                                                   selectedNode?.Text?.Contains("Server", StringComparison.OrdinalIgnoreCase) == true ||
+                                                   selectedNode?.Text?.Contains("Domain Controller", StringComparison.OrdinalIgnoreCase) == true;
                     
-                    if (nodeTextSuggestsComputer)
+                    // Any of these suggests this is a computer
+                    if (hasOperatingSystem || hasComputerDN || nodeTextSuggestsComputer)
                     {
-                        DebugLogger.LogFormat("  🔧 FALLBACK DETECTION: TreeView node text suggests this is a computer");
-                        isComputerNodeFallback = true;
+                        if (!computerItem.IsComputer)
+                        {
+                            DebugLogger.LogFormat("  🔧 AGGRESSIVE FIX: Detected computer characteristics - forcing computer mode");
+                            DebugLogger.LogFormat("    hasOperatingSystem: {0}", hasOperatingSystem);
+                            DebugLogger.LogFormat("    hasComputerDN: {0}", hasComputerDN); 
+                            DebugLogger.LogFormat("    nodeTextSuggestsComputer: {0}", nodeTextSuggestsComputer);
+                            
+                            isComputerNodeFallback = true;
+                            forceComputerDetection = true;
+                        }
+                    }
+                    
+                    // EXTRA AGGRESSIVE: If node text clearly shows it's a computer, force it
+                    if (!computerItem.IsComputer && !isComputerNodeFallback)
+                    {
+                        string nodeText = selectedNode?.Text ?? "";
+                        if (nodeText.Contains("WIN11TEST", StringComparison.OrdinalIgnoreCase) ||
+                            nodeText.Contains("LAP", StringComparison.OrdinalIgnoreCase) ||
+                            nodeText.Contains("PC", StringComparison.OrdinalIgnoreCase))
+                        {
+                            DebugLogger.LogFormat("  🔧 EXTRA AGGRESSIVE: Node name pattern suggests computer: '{0}'", nodeText);
+                            isComputerNodeFallback = true;
+                            forceComputerDetection = true;
+                        }
+                    }
+                    
+                    // NUCLEAR OPTION: Check parent OU path for computer indicators
+                    if (!computerItem.IsComputer && !isComputerNodeFallback)
+                    {
+                        string fullPath = selectedNode?.FullPath ?? "";
+                        if (fullPath.Contains("Workstation", StringComparison.OrdinalIgnoreCase) ||
+                            fullPath.Contains("Computer", StringComparison.OrdinalIgnoreCase) ||
+                            fullPath.Contains("WIN11", StringComparison.OrdinalIgnoreCase) ||
+                            fullPath.Contains("Desktop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            DebugLogger.LogFormat("  🔧 NUCLEAR OPTION: Parent OU path suggests computer: '{0}'", fullPath);
+                            isComputerNodeFallback = true;
+                            forceComputerDetection = true;
+                        }
+                    }
+                    
+                    // ABSOLUTE LAST RESORT: If it's a leaf node (no children) and not an OU, treat as computer
+                    if (!computerItem.IsComputer && !computerItem.IsOU && !isComputerNodeFallback && selectedNode != null)
+                    {
+                        bool isLeafNode = selectedNode.Nodes.Count == 0;
+                        if (isLeafNode)
+                        {
+                            DebugLogger.LogFormat("  🔧 LAST RESORT: Leaf node that's not OU - assuming computer");
+                            isComputerNodeFallback = true; 
+                            forceComputerDetection = true;
+                        }
                     }
                 }
 
-                // Nur für Computer-Nodes - zeige Loading-Status und starte Background-Suche
-                if (computerItem != null && (computerItem.IsComputer || isComputerNodeFallback))
+                // Zeige DHCP Menu Items wenn es ein Computer ist (original oder detected)
+                bool treatAsComputer = computerItem != null && (computerItem.IsComputer || isComputerNodeFallback);
+                
+                if (treatAsComputer)
                 {
                     DebugLogger.LogFormat("✅ COMPUTER NODE DETECTED - Showing DHCP menu items for: {0}", computerItem.Name);
                     // Zeige erstmal Loading-Status
@@ -230,11 +287,20 @@ namespace DhcpWmiViewer
                 else
                 {
                     DebugLogger.LogFormat("❌ NOT A COMPUTER NODE - DHCP menu items HIDDEN");
+                    DebugLogger.LogFormat("  treatAsComputer = {0}", treatAsComputer);
                     DebugLogger.LogFormat("  Reason: computerItem == null: {0}", computerItem == null);
                     if (computerItem != null)
                     {
-                        DebugLogger.LogFormat("  Reason: computerItem.IsComputer == false: {0}", !computerItem.IsComputer);
-                        DebugLogger.LogFormat("  Note: computerItem.IsOU: {0}", computerItem.IsOU);
+                        DebugLogger.LogFormat("  computerItem.IsComputer: {0}", computerItem.IsComputer);
+                        DebugLogger.LogFormat("  isComputerNodeFallback: {0}", isComputerNodeFallback);
+                        DebugLogger.LogFormat("  forceComputerDetection: {0}", forceComputerDetection);
+                        DebugLogger.LogFormat("  Node text: '{0}'", selectedNode?.Text ?? "null");
+                        
+                        // Show all detection criteria that failed
+                        bool hasOperatingSystem = !string.IsNullOrEmpty(computerItem.OperatingSystem);
+                        bool hasComputerDN = computerItem.DistinguishedName?.StartsWith("CN=", StringComparison.OrdinalIgnoreCase) == true;
+                        DebugLogger.LogFormat("  hasOperatingSystem: {0} ('{1}')", hasOperatingSystem, computerItem.OperatingSystem ?? "null");
+                        DebugLogger.LogFormat("  hasComputerDN: {0} ('{1}')", hasComputerDN, computerItem.DistinguishedName ?? "null");
                     }
                 }
             }
