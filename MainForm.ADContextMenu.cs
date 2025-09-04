@@ -36,6 +36,11 @@ namespace DhcpWmiViewer
                 var menuItemChangeReservation = new ToolStripMenuItem("⚙️ Change Reservation");
                 var menuItemShowDhcpInfo = new ToolStripMenuItem("ℹ️ Show DHCP Info");
 
+                // Initially hidden - will be shown for computer nodes only
+                menuItemConvertLease.Visible = false;
+                menuItemChangeReservation.Visible = false;
+                menuItemShowDhcpInfo.Visible = false;
+
                 contextMenuAD.Items.Add(menuItemConvertLease);
                 contextMenuAD.Items.Add(menuItemChangeReservation);
                 contextMenuAD.Items.Add(menuItemShowDhcpInfo);
@@ -243,42 +248,37 @@ namespace DhcpWmiViewer
                 // Zeige DHCP Menu Items wenn es ein Computer ist (original oder detected)
                 bool treatAsComputer = computerItem != null && (computerItem.IsComputer || isComputerNodeFallback);
                 
-                if (treatAsComputer)
+                // Only show DHCP items for computer nodes (debug mode disabled)
+                bool debugMode = false; // Debug mode disabled - working correctly!
+                bool showDhcpItems = treatAsComputer || debugMode;
+                
+                DebugLogger.LogFormat("DHCP MENU DECISION: treatAsComputer={0}, debugMode={1}, showDhcpItems={2}", 
+                    treatAsComputer, debugMode, showDhcpItems);
+                
+                if (showDhcpItems)
                 {
-                    DebugLogger.LogFormat("✅ COMPUTER NODE DETECTED - Showing DHCP menu items for: {0}", computerItem.Name);
+                    DebugLogger.LogFormat("✅ DHCP menu items shown for computer: {0}", computerItem?.Name ?? "unknown");
+                    
                     // Zeige erstmal Loading-Status
                     if (convertLeaseItem != null) 
                     {
                         convertLeaseItem.Text = "🔄 Convert Lease to Reservation (Checking...)";
                         convertLeaseItem.Visible = true;
                         convertLeaseItem.Enabled = false;
-                        DebugLogger.LogFormat("  ✅ Convert Lease item made VISIBLE");
                     }
-                    else
-                    {
-                        DebugLogger.LogFormat("  ❌ Convert Lease item NOT FOUND in menu");
-                    }
+                    
                     if (changeReservationItem != null) 
                     {
                         changeReservationItem.Text = "⚙️ Change Reservation (Checking...)";
                         changeReservationItem.Visible = true;
                         changeReservationItem.Enabled = false;
-                        DebugLogger.LogFormat("  ✅ Change Reservation item made VISIBLE");
                     }
-                    else
-                    {
-                        DebugLogger.LogFormat("  ❌ Change Reservation item NOT FOUND in menu");
-                    }
+                    
                     if (showInfoItem != null) 
                     {
                         showInfoItem.Text = "ℹ️ Show DHCP Info (Loading...)";
                         showInfoItem.Visible = true;
                         showInfoItem.Enabled = false;
-                        DebugLogger.LogFormat("  ✅ DHCP Info item made VISIBLE");
-                    }
-                    else
-                    {
-                        DebugLogger.LogFormat("  ❌ DHCP Info item NOT FOUND in menu");
                     }
 
                     // Starte DHCP-Suche im Hintergrund (fire & forget)
