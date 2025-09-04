@@ -27,10 +27,6 @@ namespace DhcpWmiViewer
                 var separator = new ToolStripSeparator();
                 contextMenuAD.Items.Add(separator);
 
-                // Test Menu Item (always visible for debugging)
-                var menuItemTest = new ToolStripMenuItem("🔧 TEST - DHCP Integration Active");
-                contextMenuAD.Items.Add(menuItemTest);
-
                 // DHCP-spezifische Menüpunkte
                 var menuItemConvertLease = new ToolStripMenuItem("🔄 Convert Lease to Reservation");
                 var menuItemChangeReservation = new ToolStripMenuItem("⚙️ Change Reservation");
