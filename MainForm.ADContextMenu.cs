@@ -567,7 +567,13 @@ namespace DhcpWmiViewer
                     info += $"  IP Address: {dhcpStatus.LeaseIP}\n";
                     info += $"  MAC Address: {dhcpStatus.MAC}\n";
                     info += $"  Scope: {dhcpStatus.ScopeId}\n";
-                    info += $"  Server: {dhcpStatus.Server}\n\n";
+                    info += $"  Server: {dhcpStatus.Server}\n";
+                    
+                    if (!string.IsNullOrEmpty(dhcpStatus.LeaseExpiration))
+                    {
+                        info += $"  Valid To: {dhcpStatus.LeaseExpiration}\n";
+                    }
+                    info += "\n";
                 }
                 
                 if (dhcpStatus.HasReservation)
@@ -605,6 +611,7 @@ namespace DhcpWmiViewer
             // Lease-Daten
             public string LeaseIP { get; set; } = "";
             public string MAC { get; set; } = "";
+            public string LeaseExpiration { get; set; } = "";
             
             // Reservation-Daten  
             public string ReservationIP { get; set; } = "";
@@ -668,6 +675,7 @@ namespace DhcpWmiViewer
                                 status.HasLease = true;
                                 status.LeaseIP = leaseStatus.IP;
                                 status.MAC = leaseStatus.MAC;
+                                status.LeaseExpiration = leaseStatus.Expiration;
                                 status.ScopeId = scopeId;
                             }
                         }
@@ -703,7 +711,7 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Sucht Computer in Leases eines Scopes
         /// </summary>
-        private async Task<(bool Found, string IP, string MAC)> FindComputerInLeases(string server, string scopeId, string computerName)
+        private async Task<(bool Found, string IP, string MAC, string Expiration)> FindComputerInLeases(string server, string scopeId, string computerName)
         {
             try
             {
@@ -727,7 +735,8 @@ namespace DhcpWmiViewer
                         if (string.Equals(hostName, computerName, StringComparison.OrdinalIgnoreCase) ||
                             string.Equals(hostName.Split('.')[0], computerName, StringComparison.OrdinalIgnoreCase))
                         {
-                            return (true, row["IPAddress"]?.ToString() ?? "", row["ClientId"]?.ToString() ?? "");
+                            var expiration = row["LeaseExpiryTime"]?.ToString() ?? "";
+                            return (true, row["IPAddress"]?.ToString() ?? "", row["ClientId"]?.ToString() ?? "", expiration);
                         }
                     }
                 }
@@ -737,7 +746,7 @@ namespace DhcpWmiViewer
                 DebugLogger.LogFormat("Error searching leases in scope {0}: {1}", scopeId, ex.Message);
             }
             
-            return (false, "", "");
+            return (false, "", "", "");
         }
 
         /// <summary>
