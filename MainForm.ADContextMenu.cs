@@ -143,13 +143,50 @@ namespace DhcpWmiViewer
                 if (computerItem != null)
                 {
                     DebugLogger.LogFormat("  computerItem.Name: '{0}'", computerItem.Name ?? "null");
-                    DebugLogger.LogFormat("  computerItem.IsComputer: {0}", computerItem.IsComputer);
-                    DebugLogger.LogFormat("  computerItem.IsOU: {0}", computerItem.IsOU);
+                    DebugLogger.LogFormat("  computerItem.Type: '{0}'", computerItem.Type ?? "null");
+                    DebugLogger.LogFormat("  computerItem.IsComputer: {0} (= Type == 'Computer')", computerItem.IsComputer);
+                    DebugLogger.LogFormat("  computerItem.IsOU: {0} (= Type == 'OU')", computerItem.IsOU);
+                    DebugLogger.LogFormat("  computerItem.IsContainer: {0} (= Type == 'Container')", computerItem.IsContainer);
                     DebugLogger.LogFormat("  computerItem.DistinguishedName: '{0}'", computerItem.DistinguishedName ?? "null");
+                    DebugLogger.LogFormat("  computerItem.OperatingSystem: '{0}'", computerItem.OperatingSystem ?? "null");
+                    
+                    // AUTOMATIC PROBLEM DIAGNOSIS
+                    if (!computerItem.IsComputer && !string.IsNullOrEmpty(computerItem.Name))
+                    {
+                        DebugLogger.LogFormat("  🔍 PROBLEM DETECTED: Node '{0}' should be a computer but Type='{1}'", computerItem.Name, computerItem.Type);
+                        
+                        // Check if this looks like a computer node
+                        bool looksLikeComputer = !string.IsNullOrEmpty(computerItem.OperatingSystem) || 
+                                               computerItem.DistinguishedName?.StartsWith("CN=", StringComparison.OrdinalIgnoreCase) == true ||
+                                               selectedNode.Text.Contains("Windows", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (looksLikeComputer)
+                        {
+                            DebugLogger.LogFormat("  🔧 AUTOMATIC FIX: This looks like a computer - overriding Type field");
+                            computerItem.Type = "Computer";
+                            DebugLogger.LogFormat("  ✅ FIXED: computerItem.IsComputer is now {0}", computerItem.IsComputer);
+                        }
+                    }
+                }
+
+                // FALLBACK: Falls computerItem.IsComputer immer noch false ist, prüfe TreeView Node Text
+                bool isComputerNodeFallback = false;
+                if (computerItem != null && !computerItem.IsComputer)
+                {
+                    // Fallback-Detection basierend auf TreeView Node Text
+                    bool nodeTextSuggestsComputer = selectedNode?.Text?.Contains("[Windows", StringComparison.OrdinalIgnoreCase) == true ||
+                                                   selectedNode?.Text?.Contains("Pro]", StringComparison.OrdinalIgnoreCase) == true ||
+                                                   selectedNode?.Text?.Contains("Server", StringComparison.OrdinalIgnoreCase) == true;
+                    
+                    if (nodeTextSuggestsComputer)
+                    {
+                        DebugLogger.LogFormat("  🔧 FALLBACK DETECTION: TreeView node text suggests this is a computer");
+                        isComputerNodeFallback = true;
+                    }
                 }
 
                 // Nur für Computer-Nodes - zeige Loading-Status und starte Background-Suche
-                if (computerItem != null && computerItem.IsComputer)
+                if (computerItem != null && (computerItem.IsComputer || isComputerNodeFallback))
                 {
                     DebugLogger.LogFormat("✅ COMPUTER NODE DETECTED - Showing DHCP menu items for: {0}", computerItem.Name);
                     // Zeige erstmal Loading-Status
