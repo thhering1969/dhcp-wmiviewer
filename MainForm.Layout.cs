@@ -604,6 +604,9 @@ namespace DhcpWmiViewer
             contextMenuAD.Items.Add(menuItemExpandAll);
             contextMenuAD.Items.Add(menuItemCollapseAll);
 
+            // Setup DHCP-Integration für Context-Menü
+            SetupADContextMenuDhcpIntegration(contextMenuAD);
+
             treeViewAD.ContextMenuStrip = contextMenuAD;
 
             // TreeView Event-Handler

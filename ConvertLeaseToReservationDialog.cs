@@ -81,6 +81,31 @@ namespace DhcpWmiViewer
             set { if (txtDescription != null) txtDescription.Text = value ?? string.Empty; }
         }
 
+        /// <summary>
+        /// Pre-populate Dialog mit Computer-Daten (wird von AD Context-Menü verwendet)
+        /// </summary>
+        public void PopulateFromLeaseData(string computerName, string leaseIP, string clientId, string scopeId)
+        {
+            try
+            {
+                // Setze Lease-Daten in die entsprechenden Controls
+                this.IpAddress = leaseIP;
+                this.ClientId = clientId;
+                this.HostName = computerName;
+                this.Description = $"Converted from lease for {computerName}";
+
+                // Speichere Scope-ID für internen Gebrauch (falls nötig)
+                // this.ScopeId = scopeId; // Falls Property existiert
+
+                DebugLogger.LogFormat("PopulateFromLeaseData: Computer={0}, IP={1}, ClientId={2}, Scope={3}", 
+                                     computerName, leaseIP, clientId, scopeId);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("Error in PopulateFromLeaseData: {0}", ex.Message);
+            }
+        }
+
         // Optional delegates that callers (MainForm) can set by reflection or directly.
         // Use the same signature as most of your code expects: Func<string, Task<DataTable>>
         // (keeps compatibility).

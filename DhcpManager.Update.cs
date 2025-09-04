@@ -64,5 +64,83 @@ namespace DhcpWmiViewer
 
             DhcpWmiViewer.Helpers.WriteDebugLog("UpdateReservationPropertiesAsync finished successfully");
         }
+
+        /// <summary>
+        /// Aktualisiert eine bestehende DHCP-Reservation (mit IP-Änderung)
+        /// </summary>
+        public static async Task<bool> UpdateReservationAsync(string server, string scopeId, string clientId, string newIP, string newName, string newDescription, Func<string, PSCredential?> getCredentials)
+        {
+            try
+            {
+                await PowerShellExecutor.ExecutePowerShellActionAsync(server, getCredentials, ps =>
+                {
+                    ps.Commands.Clear();
+                    
+                    // Erst alte Reservation entfernen
+                    ps.AddCommand("Remove-DhcpServerv4Reservation")
+                      .SafeAddParameter("ScopeId", scopeId)
+                      .SafeAddParameter("ClientId", clientId)
+                      .SafeAddParameter("ErrorAction", "Stop");
+                      
+                    if (!string.IsNullOrWhiteSpace(server) && server != ".")
+                        ps.Commands.AddParameter("ComputerName", server);
+
+                    ps.AddStatement();
+                    
+                    // Neue Reservation mit neuer IP hinzufügen
+                    var addCmd = ps.AddCommand("Add-DhcpServerv4Reservation")
+                                   .SafeAddParameter("ScopeId", scopeId)
+                                   .SafeAddParameter("IPAddress", newIP)
+                                   .SafeAddParameter("ClientId", clientId)
+                                   .SafeAddParameter("ErrorAction", "Stop");
+
+                    if (!string.IsNullOrWhiteSpace(newName))
+                        addCmd.SafeAddParameter("Name", newName);
+                    if (!string.IsNullOrWhiteSpace(newDescription))
+                        addCmd.SafeAddParameter("Description", newDescription);
+                    if (!string.IsNullOrWhiteSpace(server) && server != ".")
+                        addCmd.SafeAddParameter("ComputerName", server);
+                });
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("UpdateReservationAsync failed: {0}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Aktualisiert nur Name und Description einer Reservation (ohne IP-Änderung)
+        /// </summary>
+        public static async Task<bool> UpdateReservationDetailsAsync(string server, string scopeId, string clientId, string newName, string newDescription, Func<string, PSCredential?> getCredentials)
+        {
+            try
+            {
+                await PowerShellExecutor.ExecutePowerShellActionAsync(server, getCredentials, ps =>
+                {
+                    ps.Commands.Clear();
+                    var setCmd = ps.AddCommand("Set-DhcpServerv4Reservation")
+                                   .SafeAddParameter("ScopeId", scopeId)  
+                                   .SafeAddParameter("ClientId", clientId)
+                                   .SafeAddParameter("ErrorAction", "Stop");
+
+                    if (!string.IsNullOrWhiteSpace(newName))
+                        setCmd.SafeAddParameter("Name", newName);
+                    if (!string.IsNullOrWhiteSpace(newDescription))
+                        setCmd.SafeAddParameter("Description", newDescription);
+                    if (!string.IsNullOrWhiteSpace(server) && server != ".")
+                        setCmd.SafeAddParameter("ComputerName", server);
+                });
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("UpdateReservationDetailsAsync failed: {0}", ex.Message);
+                return false;
+            }
+        }
     }
 }
