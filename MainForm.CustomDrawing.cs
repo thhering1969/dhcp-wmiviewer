@@ -206,22 +206,41 @@ namespace DhcpWmiViewer
         }
 
         /// <summary>
-        /// Zeichnet ein Domain-Icon
+        /// Zeichnet ein modernes blaues Root/Domain-Icon (geometrisches Design)
         /// </summary>
         private void DrawDomainIcon(Graphics graphics, Rectangle rect, Color color)
         {
-            using (var brush = new SolidBrush(color))
-            using (var pen = new Pen(Color.Black, 1))
+            // Verwende ein modernes blaues Design anstatt grün
+            var blueColor = Color.FromArgb(0, 150, 220); // Schönes Blau wie im gewünschten Icon
+            
+            using (var blueBrush = new SolidBrush(blueColor))
+            using (var whiteBrush = new SolidBrush(Color.White))
             {
-                // Kreis für Domain
-                graphics.FillEllipse(brush, rect);
-                graphics.DrawEllipse(pen, rect);
+                // Hauptrechteck (blaues Quadrat als Basis)
+                graphics.FillRectangle(blueBrush, rect);
                 
-                // Kreuz in der Mitte
-                var centerX = rect.X + rect.Width / 2;
-                var centerY = rect.Y + rect.Height / 2;
-                graphics.DrawLine(pen, centerX - 3, centerY, centerX + 3, centerY);
-                graphics.DrawLine(pen, centerX, centerY - 3, centerX, centerY + 3);
+                // Geometrische Elemente wie im gewünschten Design
+                var size = rect.Width;
+                var quarter = size / 4;
+                var half = size / 2;
+                
+                // Vertikaler weißer Streifen links
+                var leftStripe = new Rectangle(rect.X + 1, rect.Y + 1, quarter - 1, size - 2);
+                graphics.FillRectangle(whiteBrush, leftStripe);
+                
+                // Horizontaler weißer Streifen oben rechts
+                var topRightStripe = new Rectangle(rect.X + quarter + 1, rect.Y + 1, size - quarter - 2, quarter - 1);
+                graphics.FillRectangle(whiteBrush, topRightStripe);
+                
+                // Kleines weißes Quadrat unten rechts
+                var bottomRightSquare = new Rectangle(rect.X + half + 1, rect.Y + half + 1, quarter - 1, quarter - 1);
+                graphics.FillRectangle(whiteBrush, bottomRightSquare);
+                
+                // Optional: Dezenter Rahmen um das ganze Icon
+                using (var borderPen = new Pen(Color.FromArgb(0, 120, 180), 1))
+                {
+                    graphics.DrawRectangle(borderPen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
+                }
             }
         }
 
