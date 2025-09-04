@@ -21,9 +21,15 @@ namespace DhcpWmiViewer
         {
             try
             {
+                DebugLogger.LogFormat("SetupADContextMenuDhcpIntegration called - adding DHCP menu items to context menu with {0} existing items", contextMenuAD.Items.Count);
+                
                 // Separator vor DHCP-Funktionen
                 var separator = new ToolStripSeparator();
                 contextMenuAD.Items.Add(separator);
+
+                // Test Menu Item (always visible for debugging)
+                var menuItemTest = new ToolStripMenuItem("🔧 TEST - DHCP Integration Active");
+                contextMenuAD.Items.Add(menuItemTest);
 
                 // DHCP-spezifische Menüpunkte
                 var menuItemConvertLease = new ToolStripMenuItem("🔄 Convert Lease to Reservation");
@@ -33,6 +39,8 @@ namespace DhcpWmiViewer
                 contextMenuAD.Items.Add(menuItemConvertLease);
                 contextMenuAD.Items.Add(menuItemChangeReservation);
                 contextMenuAD.Items.Add(menuItemShowDhcpInfo);
+
+                DebugLogger.LogFormat("DHCP menu items added successfully - context menu now has {0} items", contextMenuAD.Items.Count);
 
                 // Event Handler für DHCP-Menüpunkte
                 menuItemConvertLease.Click += async (s, e) => await OnConvertLeaseToReservation();
@@ -54,9 +62,15 @@ namespace DhcpWmiViewer
         {
             try
             {
+                DebugLogger.LogFormat("OnADContextMenuOpening called - context menu has {0} items", contextMenu.Items.Count);
+                
                 // Hole Computer-Node
                 var selectedNode = treeViewAD?.SelectedNode;
                 var computerItem = selectedNode?.Tag as ADTreeItem;
+                
+                DebugLogger.LogFormat("TreeView selected node: '{0}', Tag type: {1}", 
+                                    selectedNode?.Text ?? "null", 
+                                    selectedNode?.Tag?.GetType().Name ?? "null");
                 
                 // Debug: Highlight which object is in context focus
                 if (selectedNode != null)
@@ -72,6 +86,22 @@ namespace DhcpWmiViewer
                 var convertLeaseItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Convert Lease"));
                 var changeReservationItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Change Reservation"));
                 var showInfoItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("DHCP Info"));
+                
+                DebugLogger.LogFormat("DHCP Menu items found - Convert: {0}, Change: {1}, Info: {2}", 
+                                    convertLeaseItem != null ? "Yes" : "No",
+                                    changeReservationItem != null ? "Yes" : "No", 
+                                    showInfoItem != null ? "Yes" : "No");
+
+                // Debug: Liste alle Menu Items auf
+                DebugLogger.LogFormat("All context menu items ({0}):", contextMenu.Items.Count);
+                for (int i = 0; i < contextMenu.Items.Count; i++)
+                {
+                    var item = contextMenu.Items[i];
+                    DebugLogger.LogFormat("  [{0}] {1}: '{2}' (Visible: {3})", 
+                                        i, item.GetType().Name, 
+                                        item is ToolStripMenuItem menuItem ? menuItem.Text : item.ToString(),
+                                        item.Visible);
+                }
 
                 // Standard: Alle DHCP-Menüpunkte ausblenden
                 if (convertLeaseItem != null) 

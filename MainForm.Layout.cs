@@ -591,7 +591,17 @@ namespace DhcpWmiViewer
             // Context-Menu öffnen Event - integriert mit DHCP-Funktionalität
             contextMenuAD.Opening += (s, e) =>
             {
+                DebugLogger.LogFormat("Context menu opening event triggered - checking selected node");
+                
                 var selectedItem = treeViewAD.SelectedNode?.Tag as ADTreeItem;
+                var nodeName = treeViewAD.SelectedNode?.Text ?? "null";
+                
+                DebugLogger.LogFormat("Selected node: '{0}', ADTreeItem: {1}, IsComputer: {2}, IsOU: {3}", 
+                                    nodeName, 
+                                    selectedItem != null ? "found" : "null",
+                                    selectedItem?.IsComputer ?? false,
+                                    selectedItem?.IsOU ?? false);
+                
                 menuItemRefreshOU.Visible = selectedItem?.IsOU == true;
                 menuItemShowComputers.Visible = selectedItem?.IsOU == true;
                 menuItemPingComputer.Visible = selectedItem?.IsComputer == true;
