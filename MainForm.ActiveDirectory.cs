@@ -695,23 +695,117 @@ $count = ($computers | Measure-Object).Count
             {
                 treeViewAD.Nodes.Clear();
 
+                // Ermittle die Standard-Computer-OU der Domäne (mit Timeout und separatem Thread)
+                var selectedDC = cmbDomainControllers.SelectedItem?.ToString();
+                var defaultComputerOU = "";
+                
+                try
+                {
+                    DebugLogger.LogFormat("Attempting to determine default computer OU for DC: {0}", selectedDC ?? "localhost");
+                    
+                    // Führe die Standard-OU Bestimmung in einem separaten Task mit Timeout aus
+                    var defaultOUTask = Task.Run(() => {
+                        try
+                        {
+                            return ADDiscovery.GetDefaultComputerOU(selectedDC);
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.LogFormat("Exception in GetDefaultComputerOU task: {0}", ex.Message);
+                            return "";
+                        }
+                    });
+                    
+                    // Warte maximal 3 Sekunden auf das Ergebnis
+                    if (defaultOUTask.Wait(TimeSpan.FromSeconds(3)))
+                    {
+                        defaultComputerOU = defaultOUTask.Result ?? "";
+                        DebugLogger.LogFormat("Default Computer OU determined: {0}", defaultComputerOU);
+                    }
+                    else
+                    {
+                        DebugLogger.LogFormat("Timeout while determining default computer OU - continuing without it");
+                        defaultComputerOU = "";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.LogFormat("Error in default computer OU task handling: {0} - {1}", ex.Message, ex.GetType().Name);
+                    defaultComputerOU = "";
+                }
+
                 // Konvertiere PSObjects zu ADTreeItems
                 var items = new List<ADTreeItem>();
                 foreach (var result in results)
                 {
+                    var distinguishedName = result.Properties["DistinguishedName"]?.Value?.ToString() ?? "";
                     var item = new ADTreeItem
                     {
                         Type = result.Properties["Type"]?.Value?.ToString() ?? "",
                         Name = result.Properties["Name"]?.Value?.ToString() ?? "",
-                        DistinguishedName = result.Properties["DistinguishedName"]?.Value?.ToString() ?? "",
+                        DistinguishedName = distinguishedName,
                         Description = result.Properties["Description"]?.Value?.ToString() ?? "",
                         ParentDN = result.Properties["ParentDN"]?.Value?.ToString() ?? "",
                         ComputerCount = Convert.ToInt32(result.Properties["ComputerCount"]?.Value ?? 0),
                         Enabled = Convert.ToBoolean(result.Properties["Enabled"]?.Value ?? true),
                         OperatingSystem = result.Properties["OperatingSystem"]?.Value?.ToString() ?? "",
-                        LastLogonDate = result.Properties["LastLogonDate"]?.Value?.ToString() ?? ""
+                        LastLogonDate = result.Properties["LastLogonDate"]?.Value?.ToString() ?? "",
+                        // Markiere als Standard-Computer-OU wenn DN übereinstimmt
+                        IsDefaultComputerOU = !string.IsNullOrEmpty(defaultComputerOU) && 
+                                            string.Equals(distinguishedName, defaultComputerOU, StringComparison.OrdinalIgnoreCase)
                     };
                     items.Add(item);
+                }
+
+                // Stelle sicher, dass die Standard-Computer-OU immer in der Liste ist, auch wenn sie leer ist
+                try
+                {
+                    if (!string.IsNullOrEmpty(defaultComputerOU))
+                    {
+                        var existingDefaultOU = items.FirstOrDefault(i => 
+                            string.Equals(i.DistinguishedName, defaultComputerOU, StringComparison.OrdinalIgnoreCase));
+                        
+                        if (existingDefaultOU == null)
+                        {
+                            // Standard-OU ist nicht in der Liste (weil leer) - füge sie hinzu
+                            try
+                            {
+                                var defaultOUInfo = ADDiscovery.GetDefaultComputerOUInfo(selectedDC);
+                                if (defaultOUInfo.IsConfigured && !defaultOUInfo.HasError)
+                                {
+                                    var defaultOUItem = new ADTreeItem
+                                    {
+                                        Type = defaultOUInfo.IsOrganizationalUnit ? "OU" : "Container",
+                                        Name = defaultOUInfo.Name,
+                                        DistinguishedName = defaultOUInfo.DistinguishedName,
+                                        Description = defaultOUInfo.Description,
+                                        ParentDN = ExtractParentDN(defaultOUInfo.DistinguishedName),
+                                        ComputerCount = defaultOUInfo.ComputerCount,
+                                        Enabled = true,
+                                        IsDefaultComputerOU = true
+                                    };
+                                    items.Add(defaultOUItem);
+                                    DebugLogger.LogFormat("Added empty default computer OU to tree: {0}", defaultOUInfo.Name);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                DebugLogger.LogFormat("Error adding default computer OU: {0}", ex.Message);
+                            }
+                        }
+                        else
+                        {
+                            // Standard-OU ist bereits in der Liste - markiere sie
+                            existingDefaultOU.IsDefaultComputerOU = true;
+                            DebugLogger.LogFormat("Marked existing OU as default: {0}", existingDefaultOU.Name);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.LogFormat("Critical error in default computer OU processing: {0} - {1}", ex.Message, ex.GetType().Name);
+                    DebugLogger.LogFormat("Stack trace: {0}", ex.StackTrace);
+                    // Weiter mit der normalen Verarbeitung, auch wenn die Standard-OU Funktionalität fehlschlägt
                 }
 
                 // Erstelle Dictionary für schnelle Suche
@@ -1318,6 +1412,26 @@ $count = ($computers | Measure-Object).Count
                     .ToArray();
                 
                 return string.Join(".", dcParts);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// Extrahiert den Parent-DN aus einem Distinguished Name.
+        /// </summary>
+        private string ExtractParentDN(string dn)
+        {
+            if (string.IsNullOrEmpty(dn)) return "";
+            
+            try
+            {
+                var firstCommaIndex = dn.IndexOf(',');
+                if (firstCommaIndex == -1) return "";
+                
+                return dn.Substring(firstCommaIndex + 1).Trim();
             }
             catch
             {

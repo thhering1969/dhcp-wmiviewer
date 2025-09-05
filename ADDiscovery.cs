@@ -270,6 +270,138 @@ namespace DhcpWmiViewer
                 return 0;
             }
         }
+
+        /// <summary>
+        /// Ermittelt die Standard-OU für neue Computerobjekte in der Domäne.
+        /// Diese wird über das wellKnownObjects Attribut der Domäne definiert.
+        /// </summary>
+        public static string GetDefaultComputerOU(string domainController = "")
+        {
+            try
+            {
+                // Sehr einfacher Ansatz: Verwende System.DirectoryServices.ActiveDirectory
+                // um die Domäne zu ermitteln und dann den Standard-Computer-Container zu konstruieren
+                
+                var domain = System.DirectoryServices.ActiveDirectory.Domain.GetCurrentDomain();
+                var domainDN = $"DC={domain.Name.Replace(".", ",DC=")}";
+                
+                // Standard-Computer-Container ist fast immer CN=Computers
+                var result = $"CN=Computers,{domainDN}";
+                DebugLogger.LogFormat("GetDefaultComputerOU: Using standard computer container: {0}", result);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("GetDefaultComputerOU: Exception: {0} - {1}", ex.Message, ex.GetType().Name);
+                
+                // Fallback: Versuche es über LDAP
+                try
+                {
+                    string ldapPath = string.IsNullOrEmpty(domainController) ? "LDAP://RootDSE" : $"LDAP://{domainController}/RootDSE";
+                    using var rootDse = new DirectoryEntry(ldapPath);
+                    var defaultNC = rootDse.Properties["defaultNamingContext"].Value?.ToString();
+                    
+                    if (!string.IsNullOrEmpty(defaultNC))
+                    {
+                        var result = $"CN=Computers,{defaultNC}";
+                        DebugLogger.LogFormat("GetDefaultComputerOU: Fallback result: {0}", result);
+                        return result;
+                    }
+                }
+                catch (Exception ex2)
+                {
+                    DebugLogger.LogFormat("GetDefaultComputerOU: Fallback also failed: {0}", ex2.Message);
+                }
+                
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// Ermittelt detaillierte Informationen über die Standard-Computer-OU.
+        /// </summary>
+        public static DefaultComputerOUInfo GetDefaultComputerOUInfo(string domainController = "")
+        {
+            var result = new DefaultComputerOUInfo();
+            
+            try
+            {
+                var defaultOU = GetDefaultComputerOU(domainController);
+                if (string.IsNullOrEmpty(defaultOU))
+                {
+                    result.ErrorMessage = "Could not determine default computer OU";
+                    return result;
+                }
+
+                result.DistinguishedName = defaultOU;
+                
+                // Bestimme den Typ (OU oder Container)
+                if (defaultOU.StartsWith("OU="))
+                {
+                    result.Type = "OrganizationalUnit";
+                    result.Name = ExtractNameFromDN(defaultOU, "OU=");
+                }
+                else if (defaultOU.StartsWith("CN="))
+                {
+                    result.Type = "Container";
+                    result.Name = ExtractNameFromDN(defaultOU, "CN=");
+                }
+                else
+                {
+                    result.Type = "Unknown";
+                    result.Name = defaultOU;
+                }
+
+                // Lade zusätzliche Informationen
+                try
+                {
+                    string ldapPath = string.IsNullOrEmpty(domainController) ? $"LDAP://{defaultOU}" : $"LDAP://{domainController}/{defaultOU}";
+                    using var entry = new DirectoryEntry(ldapPath);
+                    entry.RefreshCache(new[] { "description", "managedBy" });
+                    
+                    if (entry.Properties.Contains("description") && entry.Properties["description"].Count > 0)
+                    {
+                        result.Description = entry.Properties["description"][0]?.ToString() ?? "";
+                    }
+                    
+                    if (entry.Properties.Contains("managedBy") && entry.Properties["managedBy"].Count > 0)
+                    {
+                        result.ManagedBy = entry.Properties["managedBy"][0]?.ToString() ?? "";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.ErrorMessage = $"Could not load additional info: {ex.Message}";
+                }
+
+                // Zähle Computer in der Standard-OU
+                result.ComputerCount = CountComputerObjects(defaultOU, domainController);
+                result.IsConfigured = true;
+            }
+            catch (Exception ex)
+            {
+                result.ErrorMessage = $"Error determining default computer OU: {ex.Message}";
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Hilfsmethode zum Extrahieren des Namens aus einem Distinguished Name.
+        /// </summary>
+        private static string ExtractNameFromDN(string dn, string prefix)
+        {
+            if (string.IsNullOrEmpty(dn) || !dn.StartsWith(prefix))
+                return dn;
+                
+            var startIndex = prefix.Length;
+            var endIndex = dn.IndexOf(',', startIndex);
+            
+            if (endIndex == -1)
+                return dn.Substring(startIndex);
+                
+            return dn.Substring(startIndex, endIndex - startIndex);
+        }
     }
 
     /// <summary>
@@ -281,6 +413,25 @@ namespace DhcpWmiViewer
         public string DistinguishedName { get; set; } = "";
         public string Description { get; set; } = "";
         public int ComputerCount { get; set; }
+    }
+
+    /// <summary>
+    /// Informationen über die Standard-Computer-OU der Domäne.
+    /// </summary>
+    public class DefaultComputerOUInfo
+    {
+        public string Name { get; set; } = "";
+        public string DistinguishedName { get; set; } = "";
+        public string Type { get; set; } = ""; // "OrganizationalUnit", "Container", "Unknown"
+        public string Description { get; set; } = "";
+        public string ManagedBy { get; set; } = "";
+        public int ComputerCount { get; set; }
+        public bool IsConfigured { get; set; }
+        public string ErrorMessage { get; set; } = "";
+        
+        public bool IsContainer => Type == "Container";
+        public bool IsOrganizationalUnit => Type == "OrganizationalUnit";
+        public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
     }
 
     /// <summary>
@@ -297,6 +448,11 @@ namespace DhcpWmiViewer
         public bool Enabled { get; set; } = true;
         public string OperatingSystem { get; set; } = "";
         public string LastLogonDate { get; set; } = "";
+
+        /// <summary>
+        /// Kennzeichnet, ob dies die Standard-Computer-OU der Domäne ist
+        /// </summary>
+        public bool IsDefaultComputerOU { get; set; } = false;
 
         /// <summary>
         /// Online-Status des Computers (wird lazy geladen)
@@ -328,12 +484,14 @@ namespace DhcpWmiViewer
                 if (IsOU)
                 {
                     var displayName = GetCleanName();
-                    return ComputerCount > 0 ? $"{displayName} ({ComputerCount} computers)" : $"{displayName}";
+                    var defaultMarker = IsDefaultComputerOU ? " [Default]" : "";
+                    return ComputerCount > 0 ? $"{displayName} ({ComputerCount} computers){defaultMarker}" : $"{displayName}{defaultMarker}";
                 }
                 else if (IsContainer)
                 {
                     var displayName = GetCleanName();
-                    return ComputerCount > 0 ? $"{displayName} ({ComputerCount} computers)" : $"{displayName}";
+                    var defaultMarker = IsDefaultComputerOU ? " [Default]" : "";
+                    return ComputerCount > 0 ? $"{displayName} ({ComputerCount} computers){defaultMarker}" : $"{displayName}{defaultMarker}";
                 }
                 else if (IsComputer)
                 {
@@ -364,11 +522,13 @@ namespace DhcpWmiViewer
             {
                 if (IsOU)
                 {
-                    return $"OU: {Name}\nDN: {DistinguishedName}\nDescription: {Description}\nComputers: {ComputerCount}";
+                    var defaultInfo = IsDefaultComputerOU ? "\n⭐ This is the default computer OU" : "";
+                    return $"OU: {Name}\nDN: {DistinguishedName}\nDescription: {Description}\nComputers: {ComputerCount}{defaultInfo}";
                 }
                 else if (IsContainer)
                 {
-                    return $"Container: {Name}\nDN: {DistinguishedName}\nDescription: {Description}\nComputers: {ComputerCount}";
+                    var defaultInfo = IsDefaultComputerOU ? "\n⭐ This is the default computer container" : "";
+                    return $"Container: {Name}\nDN: {DistinguishedName}\nDescription: {Description}\nComputers: {ComputerCount}{defaultInfo}";
                 }
                 else if (IsComputer)
                 {

@@ -71,7 +71,14 @@ namespace DhcpWmiViewer
             
             if (item.IsOU || item.IsContainer)
             {
-                DrawFolderIcon(graphics, iconRect, Color.DarkOrange);
+                if (item.IsDefaultComputerOU)
+                {
+                    DrawDefaultComputerOUIcon(graphics, iconRect);
+                }
+                else
+                {
+                    DrawFolderIcon(graphics, iconRect, Color.DarkOrange);
+                }
             }
             else if (item.IsComputer)
             {
@@ -146,6 +153,48 @@ namespace DhcpWmiViewer
         }
 
         private System.Windows.Forms.Timer? _refreshTimer;
+
+        /// <summary>
+        /// Zeichnet ein spezielles Icon für die Standard-Computer-OU (Ordner mit "D")
+        /// </summary>
+        private void DrawDefaultComputerOUIcon(Graphics graphics, Rectangle rect)
+        {
+            // Verwende eine spezielle Farbe für die Standard-OU (z.B. goldenes Orange)
+            var folderColor = Color.FromArgb(255, 165, 0); // Orange/Gold
+            var textColor = Color.White;
+            
+            using (var folderBrush = new SolidBrush(folderColor))
+            using (var textBrush = new SolidBrush(textColor))
+            using (var pen = new Pen(Color.Black, 1))
+            using (var font = new Font("Arial", 8, FontStyle.Bold))
+            {
+                // Folder-Form zeichnen (etwas größer für bessere Sichtbarkeit)
+                var folderRect = new Rectangle(rect.X, rect.Y + 3, rect.Width, rect.Height - 4);
+                var tabRect = new Rectangle(rect.X, rect.Y + 1, rect.Width / 2, 3);
+                
+                // Folder-Body
+                graphics.FillRectangle(folderBrush, folderRect);
+                graphics.DrawRectangle(pen, folderRect);
+                
+                // Folder-Tab
+                graphics.FillRectangle(folderBrush, tabRect);
+                graphics.DrawRectangle(pen, tabRect);
+                
+                // "D" für Default in den Ordner zeichnen
+                var textRect = new Rectangle(folderRect.X + 2, folderRect.Y + 1, folderRect.Width - 4, folderRect.Height - 2);
+                var stringFormat = new StringFormat
+                {
+                    Alignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center
+                };
+                
+                graphics.DrawString("D", font, textBrush, textRect, stringFormat);
+                
+                // Optional: Kleiner Stern oder Punkt als zusätzlicher Indikator
+                var starRect = new Rectangle(rect.X + rect.Width - 4, rect.Y, 3, 3);
+                graphics.FillEllipse(Brushes.Gold, starRect);
+            }
+        }
 
         /// <summary>
         /// Zeichnet ein oranges Folder-Icon
@@ -266,7 +315,8 @@ namespace DhcpWmiViewer
             if (item.IsOU || item.IsContainer)
             {
                 var displayName = item.GetCleanName();
-                return item.ComputerCount > 0 ? $" {displayName} ({item.ComputerCount} computers)" : $" {displayName}";
+                var defaultMarker = item.IsDefaultComputerOU ? " [Default]" : "";
+                return item.ComputerCount > 0 ? $" {displayName} ({item.ComputerCount} computers){defaultMarker}" : $" {displayName}{defaultMarker}";
             }
             else if (item.IsComputer)
             {
