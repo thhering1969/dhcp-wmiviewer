@@ -444,5 +444,117 @@ $result
 
             return await InvokeADScriptAsync(domainController, script, getCredentials);
         }
+
+        /// <summary>
+        /// Ermittelt die Standard-Computer-OU über PowerShell.
+        /// </summary>
+        public static async Task<Collection<PSObject>> GetDefaultComputerOUAsync(string domainController, Func<string, PSCredential?>? getCredentials = null)
+        {
+            var script = @"
+# Ermittle die Standard-Computer-OU der Domäne
+try {
+    # Methode 1: Über Get-ADDomain und wellKnownObjects
+    $domain = Get-ADDomain
+    $defaultComputerContainer = $null
+    
+    # Suche nach dem Computer-Container in wellKnownObjects
+    # GUID für Computer-Container: AA312825768811D1ADED00C04FD8D5CD
+    foreach ($wellKnownObj in $domain.wellKnownObjects) {
+        if ($wellKnownObj -match 'AA312825768811D1ADED00C04FD8D5CD:(.+)$') {
+            $defaultComputerContainer = $matches[1]
+            break
+        }
+    }
+    
+    # Fallback: Standard CN=Computers Container
+    if (-not $defaultComputerContainer) {
+        $defaultComputerContainer = ""CN=Computers,$($domain.DistinguishedName)""
+    }
+    
+    Write-Host ""DEBUG: Default Computer Container: $defaultComputerContainer""
+    
+    # Versuche zusätzliche Informationen zu laden
+    $containerInfo = $null
+    $containerType = 'Unknown'
+    $containerName = 'Unknown'
+    $description = ''
+    $managedBy = ''
+    $computerCount = 0
+    
+    try {
+        if ($defaultComputerContainer -match '^OU=') {
+            # Es ist eine OU
+            $containerInfo = Get-ADOrganizationalUnit -Identity $defaultComputerContainer -Properties Description, ManagedBy -ErrorAction SilentlyContinue
+            $containerType = 'OrganizationalUnit'
+            if ($containerInfo) {
+                $containerName = $containerInfo.Name
+                $description = if ($containerInfo.Description) { $containerInfo.Description } else { '' }
+                $managedBy = if ($containerInfo.ManagedBy) { $containerInfo.ManagedBy } else { '' }
+            }
+        } else {
+            # Es ist ein Container
+            $containerInfo = Get-ADObject -Identity $defaultComputerContainer -Properties Description, ManagedBy -ErrorAction SilentlyContinue
+            $containerType = 'Container'
+            if ($containerInfo) {
+                $containerName = $containerInfo.Name
+                $description = if ($containerInfo.Description) { $containerInfo.Description } else { '' }
+                $managedBy = if ($containerInfo.ManagedBy) { $containerInfo.ManagedBy } else { '' }
+            }
+        }
+        
+        # Zähle Computer in der Standard-OU/Container
+        $computers = Get-ADComputer -SearchBase $defaultComputerContainer -SearchScope OneLevel -Filter * -ErrorAction SilentlyContinue
+        if ($computers) {
+            $computerCount = ($computers | Measure-Object).Count
+        }
+        
+    } catch {
+        Write-Host ""DEBUG: Error loading container details: $($_.Exception.Message)""
+    }
+    
+    # Extrahiere Name aus DN falls nicht bereits gesetzt
+    if ($containerName -eq 'Unknown' -and $defaultComputerContainer -match '^(OU|CN)=([^,]+)') {
+        $containerName = $matches[2]
+    }
+    
+    # Erstelle Ergebnis-Objekt
+    $result = [PSCustomObject]@{
+        Name = $containerName
+        DistinguishedName = $defaultComputerContainer
+        Type = $containerType
+        Description = $description
+        ManagedBy = $managedBy
+        ComputerCount = $computerCount
+        IsConfigured = $true
+        ErrorMessage = ''
+        DomainName = $domain.DNSRoot
+        DomainDN = $domain.DistinguishedName
+    }
+    
+    Write-Host ""DEBUG: Result created - Name: $($result.Name), Type: $($result.Type), Count: $($result.ComputerCount)""
+    
+    return $result
+    
+} catch {
+    Write-Host ""ERROR: Failed to determine default computer OU: $($_.Exception.Message)""
+    
+    # Erstelle Fehler-Objekt
+    return [PSCustomObject]@{
+        Name = ''
+        DistinguishedName = ''
+        Type = 'Unknown'
+        Description = ''
+        ManagedBy = ''
+        ComputerCount = 0
+        IsConfigured = $false
+        ErrorMessage = $_.Exception.Message
+        DomainName = ''
+        DomainDN = ''
+    }
+}
+";
+
+            return await InvokeADScriptAsync(domainController, script, getCredentials);
+        }
     }
 }

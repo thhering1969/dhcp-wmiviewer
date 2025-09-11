@@ -532,11 +532,19 @@ namespace DhcpWmiViewer
                 Scrollable = true,
                 // Explizite Größen-Einstellungen
                 MinimumSize = new Size(200, 100),
-                AutoSize = false
+                AutoSize = false,
+                // Drag & Drop aktivieren
+                AllowDrop = true
             };
 
             // Custom Drawing Event Handler
             treeViewAD.DrawNode += TreeViewAD_DrawNode;
+            
+            // Drag & Drop Event Handlers
+            treeViewAD.ItemDrag += TreeViewAD_ItemDrag;
+            treeViewAD.DragEnter += TreeViewAD_DragEnter;
+            treeViewAD.DragOver += TreeViewAD_DragOver;
+            treeViewAD.DragDrop += TreeViewAD_DragDrop;
 
             // Context Menu für TreeView
             var contextMenuAD = new ContextMenuStrip();

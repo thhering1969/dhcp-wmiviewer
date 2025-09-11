@@ -31,15 +31,20 @@ namespace DhcpWmiViewer
                 var menuItemConvertLease = new ToolStripMenuItem("🔄 Convert Lease to Reservation");
                 var menuItemChangeReservation = new ToolStripMenuItem("⚙️ Change Reservation");
                 var menuItemShowDhcpInfo = new ToolStripMenuItem("ℹ️ Show DHCP Info");
+                
+                // Computer-Management Menüpunkte
+                var menuItemMoveComputer = new ToolStripMenuItem("📁 Move Computer to OU...");
 
                 // Initially hidden - will be shown for computer nodes only
                 menuItemConvertLease.Visible = false;
                 menuItemChangeReservation.Visible = false;
                 menuItemShowDhcpInfo.Visible = false;
+                menuItemMoveComputer.Visible = false;
 
                 contextMenuAD.Items.Add(menuItemConvertLease);
                 contextMenuAD.Items.Add(menuItemChangeReservation);
                 contextMenuAD.Items.Add(menuItemShowDhcpInfo);
+                contextMenuAD.Items.Add(menuItemMoveComputer);
 
                 DebugLogger.LogFormat("DHCP menu items added successfully - context menu now has {0} items", contextMenuAD.Items.Count);
 
@@ -47,6 +52,9 @@ namespace DhcpWmiViewer
                 menuItemConvertLease.Click += async (s, e) => await OnConvertLeaseToReservation();
                 menuItemChangeReservation.Click += async (s, e) => await OnChangeComputerReservation();
                 menuItemShowDhcpInfo.Click += async (s, e) => await OnShowComputerDhcpInfo();
+                
+                // Event Handler für Computer-Management
+                menuItemMoveComputer.Click += async (s, e) => await OnMoveComputerToOU();
 
                 // Opening Event wird jetzt vom Haupt-Handler in Layout.cs aufgerufen
             }
@@ -343,6 +351,7 @@ namespace DhcpWmiViewer
                         var convertLeaseItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Convert Lease"));
                         var changeReservationItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Change Reservation"));
                         var showInfoItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("DHCP Info"));
+                        var moveComputerItem = contextMenu.Items.OfType<ToolStripMenuItem>().FirstOrDefault(x => x.Text.Contains("Move Computer"));
 
                         // Configure basierend auf DHCP-Status
                         if (convertLeaseItem != null)
@@ -387,6 +396,13 @@ namespace DhcpWmiViewer
                                 showInfoItem.Visible = true;
                                 showInfoItem.Enabled = false;
                             }
+                        }
+                        
+                        // Move Computer ist immer für Computer-Objekte verfügbar
+                        if (moveComputerItem != null)
+                        {
+                            moveComputerItem.Visible = true;
+                            moveComputerItem.Enabled = true;
                         }
                     }
                     catch (Exception ex)
@@ -827,6 +843,238 @@ namespace DhcpWmiViewer
             catch (Exception ex)
             {
                 DebugLogger.LogFormat("Error updating computer reservation: {0}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Verschiebt den ausgewählten Computer in eine andere OU
+        /// </summary>
+        private async Task OnMoveComputerToOU()
+        {
+            try
+            {
+                var selectedNode = treeViewAD?.SelectedNode;
+                var computerItem = selectedNode?.Tag as ADTreeItem;
+                
+                if (computerItem == null || !computerItem.IsComputer)
+                {
+                    MessageBox.Show("Please select a computer first.", "Move Computer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                UpdateStatus($"Preparing to move computer '{computerItem.Name}'...");
+                
+                // Sammle alle verfügbaren Computer-Container und OUs
+                var availableOUs = await GetAvailableComputerContainersAsync();
+                
+                if (availableOUs.Count == 0)
+                {
+                    MessageBox.Show("No suitable target containers found.", "Move Computer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    UpdateStatus("Ready.");
+                    return;
+                }
+
+                // Zeige OU-Auswahl Dialog
+                using var ouSelectionDialog = new MoveComputerDialog(computerItem, availableOUs);
+                if (ouSelectionDialog.ShowDialog() == DialogResult.OK)
+                {
+                    var targetOU = ouSelectionDialog.SelectedTargetOU;
+                    var confirmed = ouSelectionDialog.UserConfirmed;
+                    
+                    if (!confirmed || string.IsNullOrEmpty(targetOU))
+                    {
+                        UpdateStatus("Move operation cancelled.");
+                        return;
+                    }
+
+                    // Führe die Verschiebung durch
+                    UpdateStatus($"Moving computer '{computerItem.Name}' to '{targetOU}'...");
+                    
+                    var success = await MoveComputerToOUAsync(computerItem.DistinguishedName, targetOU);
+                    
+                    if (success)
+                    {
+                        // Event für Computer-Verschiebung loggen
+                        var selectedDC = cmbDomainControllers?.SelectedItem?.ToString();
+                        EventLogger.LogComputerMove(
+                            computerItem.Name,
+                            GetFriendlyOUName(GetParentDN(computerItem.DistinguishedName)),
+                            GetFriendlyOUName(targetOU),
+                            selectedDC ?? Environment.MachineName,
+                            "ContextMenu"
+                        );
+                        
+                        MessageBox.Show($"Computer '{computerItem.Name}' successfully moved to '{targetOU}'.", 
+                                      "Move Computer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        
+                        // Aktualisiere AD-Struktur
+                        UpdateStatus("Refreshing AD structure...");
+                        if (!string.IsNullOrEmpty(selectedDC))
+                        {
+                            await LoadADStructureAsync(selectedDC);
+                        }
+                        UpdateStatus("Computer moved successfully.");
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Failed to move computer '{computerItem.Name}'. Check permissions and try again.", 
+                                      "Move Computer", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        UpdateStatus("Move operation failed.");
+                    }
+                }
+                else
+                {
+                    UpdateStatus("Move operation cancelled.");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error moving computer: {ex.Message}", "Move Computer", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                UpdateStatus($"Error moving computer: {ex.Message}");
+                DebugLogger.LogFormat("Error in OnMoveComputerToOU: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Sammelt alle verfügbaren Computer-Container und OUs aus der aktuellen AD-Struktur
+        /// </summary>
+        private async Task<List<string>> GetAvailableComputerContainersAsync()
+        {
+            var containers = new List<string>();
+            
+            try
+            {
+                await Task.Run(() =>
+                {
+                    // Durchsuche die TreeView nach Computer-Containern und OUs
+                    if (treeViewAD?.Nodes != null)
+                    {
+                        foreach (TreeNode rootNode in treeViewAD.Nodes)
+                        {
+                            CollectComputerContainers(rootNode, containers);
+                        }
+                    }
+                });
+                
+                // Sortiere alphabetisch
+                containers.Sort();
+                
+                DebugLogger.LogFormat("Found {0} available computer containers", containers.Count);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("Error collecting computer containers: {0}", ex.Message);
+            }
+            
+            return containers;
+        }
+
+        /// <summary>
+        /// Rekursive Hilfsmethode zum Sammeln von Computer-Containern
+        /// </summary>
+        private void CollectComputerContainers(TreeNode node, List<string> containers)
+        {
+            try
+            {
+                var item = node.Tag as ADTreeItem;
+                if (item != null)
+                {
+                    // Füge Container hinzu, die Computer enthalten können
+                    if (item.IsOU || 
+                        item.IsContainer || 
+                        (item.Name?.ToLowerInvariant().Contains("computer") == true))
+                    {
+                        if (!string.IsNullOrEmpty(item.DistinguishedName))
+                        {
+                            containers.Add(item.DistinguishedName);
+                        }
+                    }
+                }
+                
+                // Rekursiv durch Kindknoten
+                foreach (TreeNode childNode in node.Nodes)
+                {
+                    CollectComputerContainers(childNode, containers);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("Error in CollectComputerContainers: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Konvertiert einen Distinguished Name in einen benutzerfreundlichen Namen
+        /// </summary>
+        private string GetFriendlyOUName(string distinguishedName)
+        {
+            if (string.IsNullOrEmpty(distinguishedName))
+                return "Unknown";
+
+            try
+            {
+                // Extrahiere die wichtigsten Teile des DN
+                var parts = distinguishedName.Split(',');
+                var ouParts = new List<string>();
+                var cnParts = new List<string>();
+
+                foreach (var part in parts)
+                {
+                    var trimmedPart = part.Trim();
+                    if (trimmedPart.StartsWith("OU=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ouParts.Add(trimmedPart.Substring(3));
+                    }
+                    else if (trimmedPart.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cnParts.Add(trimmedPart.Substring(3));
+                    }
+                }
+
+                if (ouParts.Count > 0)
+                {
+                    ouParts.Reverse();
+                    return string.Join(" > ", ouParts);
+                }
+                else if (cnParts.Count > 0)
+                {
+                    return cnParts[0];
+                }
+                else
+                {
+                    return distinguishedName.Length > 50 ? distinguishedName.Substring(0, 47) + "..." : distinguishedName;
+                }
+            }
+            catch
+            {
+                return distinguishedName.Length > 50 ? distinguishedName.Substring(0, 47) + "..." : distinguishedName;
+            }
+        }
+
+        /// <summary>
+        /// Verschiebt ein Computer-Objekt in eine andere OU
+        /// </summary>
+        private async Task<bool> MoveComputerToOUAsync(string computerDN, string targetOU)
+        {
+            try
+            {
+                return await Task.Run(() =>
+                {
+                    using var computerEntry = new System.DirectoryServices.DirectoryEntry($"LDAP://{computerDN}");
+                    using var targetEntry = new System.DirectoryServices.DirectoryEntry($"LDAP://{targetOU}");
+                    
+                    // Verschiebe das Computer-Objekt
+                    computerEntry.MoveTo(targetEntry);
+                    computerEntry.CommitChanges();
+                    
+                    DebugLogger.LogFormat("Successfully moved computer from {0} to {1}", computerDN, targetOU);
+                    return true;
+                });
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogFormat("Error moving computer from {0} to {1}: {2}", computerDN, targetOU, ex.Message);
                 return false;
             }
         }
