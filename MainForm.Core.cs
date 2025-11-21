@@ -42,6 +42,30 @@ namespace DhcpWmiViewer
             // Layout initialisieren (legt Controls an, verwendet Felder aus MainForm.Controls.cs)
             InitializeLayout();
 
+            // Form-Events für Cleanup
+            this.FormClosing += MainForm_FormClosing;
+
+            // DebugLogger mit dieser MainForm-Instanz initialisieren
+            try
+            {
+                DebugLogger.Initialize(this);
+                DebugLogger.LogInfo("MainForm initialisiert", "MainForm.Constructor");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DebugLogger.Initialize fehlgeschlagen: {ex.Message}");
+            }
+
+            // DHCP-Integration für AD-Tooltips initialisieren
+            try
+            {
+                InitializeDhcpIntegration();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DHCP Integration initialization failed: {ex.Message}");
+            }
+
             // Administratorrechte prüfen (wichtig für DHCP-Verwaltung)
             try
             {

@@ -42,17 +42,18 @@ namespace DhcpWmiViewer
                 // ignore initialization errors
             }
 
-            // 3) Optional: EventLogger.Init (falls Du eine zentrale EventLogger-Klasse benutzt).
+            // 3) EventLogger initialisieren (lokaler EventLog-Logger)
             // Achtung: CreateEventSource benötigt Admin-Rechte; EnsureEventSourceRegisteredBestEffort
             // in MainForm.Logging.cs ist so implementiert, dass Fehler geschluckt werden.
             try
             {
-                // wenn Du eine EventLogger.Initialize(...) hast, rufe sie hier.
-                // EventLogger.Initialize(AppConstants.EventSourceName, AppConstants.EventLogName, tryCreateSource: true);
+                EventLogger.Initialize(AppConstants.EventSourceName, AppConstants.EventLogName, tryCreateSource: true);
+                EventLogger.LogInfo("DhcpWmiViewer gestartet - EventLogger initialisiert");
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                // Fallback zu Debug-Ausgabe wenn EventLogger fehlschlägt
+                System.Diagnostics.Debug.WriteLine($"EventLogger.Initialize fehlgeschlagen: {ex.Message}");
             }
 
             // Ensure proper DPI scaling for WinForms controls
@@ -92,15 +93,15 @@ namespace DhcpWmiViewer
                 }
                 catch { /* ignore */ }
 
-                // In EventLog schreiben (wenn möglich) - optional, EventLogger kann fehlen
+                // In EventLog schreiben (wenn möglich)
                 try
                 {
-                    // Optional: falls Du eine EventLogger-Klasse hast, rufe sie an.
-                    // EventLogger.LogException(ex, title);
+                    EventLogger.LogException(ex, title);
                 }
-                catch
+                catch (Exception logEx)
                 {
-                    // ignore
+                    // Fallback zu Debug-Ausgabe wenn EventLogger fehlschlägt
+                    System.Diagnostics.Debug.WriteLine($"EventLogger.LogException fehlgeschlagen: {logEx.Message}");
                 }
             }
             catch

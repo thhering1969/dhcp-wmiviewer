@@ -104,6 +104,91 @@ namespace DhcpWmiViewer
             }
         }
 
+        /// <summary>
+        /// Loggt Computer-Move-Events remote auf dem angegebenen Server
+        /// </summary>
+        public static void LogComputerMove(string computerName, string sourceOU, string targetOU, string targetServer, string method = "Unknown")
+        {
+            try
+            {
+                var message = $"MoveComputer: Computer '{computerName}' moved from '{sourceOU}' to '{targetOU}' (Method={method})";
+                
+                // Versuche Event remote auf dem Domain Controller zu schreiben
+                if (!string.IsNullOrEmpty(targetServer) && !string.Equals(targetServer, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                {
+                    LogEventRemote(targetServer, message);
+                }
+                else
+                {
+                    // Fallback: Lokal loggen
+                    LogInfo(message);
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeWriteFallback($"LogComputerMove failed: {ex} | Computer: {computerName}");
+            }
+        }
+
+        /// <summary>
+        /// Schreibt ein Event remote auf den angegebenen Server via PowerShell
+        /// </summary>
+        private static void LogEventRemote(string serverName, string message)
+        {
+            try
+            {
+                // PowerShell-Script zum remote Event-Logging
+                var script = $@"
+try {{
+    if ([System.Diagnostics.EventLog]::SourceExists('{_source}')) {{
+        [System.Diagnostics.EventLog]::WriteEntry('{_source}', '{message.Replace("'", "''")}', 'Information')
+        Write-Output 'Event logged successfully'
+    }} else {{
+        Write-Output 'EventSource {_source} not found'
+    }}
+}} catch {{
+    Write-Output ""Error: $($_.Exception.Message)""
+}}";
+
+                // Führe PowerShell-Script remote aus
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        var result = await PowerShellExecutor.ExecutePowerShellQueryAsync(
+                            serverName,
+                            null, // Credentials werden automatisch geholt
+                            ps => ps.AddScript(script),
+                            dt => { }, // Keine DataTable-Konfiguration nötig
+                            isDynamic: true
+                        );
+                        
+                        // Optional: Ergebnis loggen
+                        if (result != null && result.Rows.Count > 0)
+                        {
+                            var output = result.Rows[0][0]?.ToString();
+                            if (!string.IsNullOrEmpty(output))
+                            {
+                                SafeWriteFallback($"Remote event logging result: {output}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Fallback: Lokal loggen wenn remote fehlschlägt
+                        SafeWriteFallback($"Remote event logging failed for {serverName}: {ex.Message}");
+                        LogInfo($"[REMOTE-FAILED] {message}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                // Fallback: Lokal loggen
+                SafeWriteFallback($"LogEventRemote setup failed: {ex.Message}");
+                LogInfo($"[REMOTE-SETUP-FAILED] {message}");
+            }
+        }
+
         private static void WriteEvent(string message, EventLogEntryType type)
         {
             try
