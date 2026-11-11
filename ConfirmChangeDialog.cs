@@ -1,4 +1,6 @@
 // ConfirmChangeDialog.cs
+using static DhcpWmiViewer.Loc;
+
 namespace DhcpWmiViewer
 {
     /// <summary>
@@ -8,8 +10,11 @@ namespace DhcpWmiViewer
     /// </summary>
     internal sealed class ConfirmChangeDialog : Form
     {
-        /// <summary>Ein Feld der Gegenüberstellung. Before = null: neu angelegt; After = null: wird gelöscht.</summary>
-        public sealed record Field(string Label, string? Before, string? After)
+        /// <summary>
+        /// Ein Feld der Gegenüberstellung. Before = null: neu angelegt; After = null: wird gelöscht.
+        /// LogKey: sprachunabhängiger Name fürs EventLog (sonst Label).
+        /// </summary>
+        public sealed record Field(string Label, string? Before, string? After, string? LogKey = null)
         {
             public bool Changed => !string.Equals(Before ?? "", After ?? "", StringComparison.Ordinal) || Before == null || After == null;
         }
@@ -51,11 +56,11 @@ namespace DhcpWmiViewer
             root.Controls.Add(CreateComparisonTable(fields));
 
             var hint = destructive
-                ? "Diese Aktion kann nicht rückgängig gemacht werden."
-                : "Geänderte Werte sind gelb hervorgehoben.";
+                ? T("Diese Aktion kann nicht rückgängig gemacht werden.", "This action cannot be undone.")
+                : T("Geänderte Werte sind gelb hervorgehoben.", "Changed values are highlighted in yellow.");
             root.Controls.Add(new Label { Text = hint, AutoSize = true, ForeColor = Theme.TextSecondary, Margin = new Padding(0, 10, 0, 0) });
 
-            var btnRun = destructive ? Theme.PrimaryButton("Löschen") : Theme.PrimaryButton("Ausführen");
+            var btnRun = destructive ? Theme.PrimaryButton(T("Löschen", "Delete")) : Theme.PrimaryButton(T("Ausführen", "Apply"));
             if (destructive)
             {
                 btnRun.BackColor = DangerColor;
@@ -66,7 +71,7 @@ namespace DhcpWmiViewer
             btnRun.DialogResult = DialogResult.OK;
             btnRun.Margin = new Padding(8, 0, 0, 0);
 
-            var btnCancel = Theme.SecondaryButton("Abbrechen");
+            var btnCancel = Theme.SecondaryButton(T("Abbrechen", "Cancel"));
             btnCancel.DialogResult = DialogResult.Cancel;
             btnCancel.Margin = Padding.Empty;
 
@@ -117,20 +122,20 @@ namespace DhcpWmiViewer
                 Font = header || highlight ? new Font(Font, FontStyle.Bold) : Font
             };
 
-            table.Controls.Add(Cell("Feld", header: true));
-            table.Controls.Add(Cell("Vorher", header: true));
-            table.Controls.Add(Cell("Nachher", header: true));
+            table.Controls.Add(Cell(T("Feld", "Field"), header: true));
+            table.Controls.Add(Cell(T("Vorher", "Before"), header: true));
+            table.Controls.Add(Cell(T("Nachher", "After"), header: true));
 
             foreach (var f in fields)
             {
                 table.Controls.Add(Cell(f.Label, muted: true));
-                table.Controls.Add(Cell(f.Before == null ? "— (neu)" : Display(f.Before), muted: f.Before == null));
-                table.Controls.Add(Cell(f.After == null ? "— (wird gelöscht)" : Display(f.After), highlight: f.Changed));
+                table.Controls.Add(Cell(f.Before == null ? T("— (neu)", "— (new)") : Display(f.Before), muted: f.Before == null));
+                table.Controls.Add(Cell(f.After == null ? T("— (wird gelöscht)", "— (will be deleted)") : Display(f.After), highlight: f.Changed));
             }
             return table;
         }
 
-        private static string Display(string value) => string.IsNullOrEmpty(value) ? "(leer)" : value;
+        private static string Display(string value) => string.IsNullOrEmpty(value) ? T("(leer)", "(empty)") : value;
 
         /// <summary>Zeigt die Zusammenfassung; true nur bei ausdrücklicher Bestätigung.</summary>
         public static bool Confirm(IWin32Window owner, string title, string action, string server, string scopeId,
@@ -144,7 +149,12 @@ namespace DhcpWmiViewer
         public static string Summarize(IEnumerable<Field> fields, string separator = "\n")
             => string.Join(separator, fields.Where(f => f.Changed).Select(f =>
                 f.Before == null ? $"{f.Label}: {Display(f.After ?? "")}"
-                : f.After == null ? $"{f.Label}: {Display(f.Before)} (gelöscht)"
+                : f.After == null ? $"{f.Label}: {Display(f.Before)} " + T("(gelöscht)", "(deleted)")
                 : $"{f.Label}: {Display(f.Before)} → {Display(f.After)}"));
+
+        /// <summary>Wie <see cref="Summarize"/>, aber mit sprachunabhängigen Namen (LogKey) und ";" – fürs EventLog.</summary>
+        public static string SummarizeForLog(IEnumerable<Field> fields)
+            => string.Join(";", fields.Where(f => f.Changed).Select(f =>
+                $"{f.LogKey ?? f.Label}=" + (f.Before == null ? (f.After ?? "") : f.After == null ? f.Before + " (deleted)" : $"{f.Before} -> {f.After}")));
     }
 }

@@ -1,8 +1,12 @@
 // MainForm.Logging.cs
 using System.Text;
+using static DhcpWmiViewer.Loc;
 
 namespace DhcpWmiViewer
 {
+    /// <summary>Ergebnistext von "Bereich replizieren" + Protokoll für die Meldung; IsWarning = Fehler/übersprungen/nicht protokolliert.</summary>
+    internal sealed record ReplicationReport(string Text, bool IsWarning);
+
     public partial class MainForm
     {
         private const string ManualReplication = "Manuell";
@@ -12,10 +16,11 @@ namespace DhcpWmiViewer
         /// <summary>
         /// Nach einer erfolgreichen Änderung: Scope sofort auf den Failover-Partner replizieren und
         /// Änderung + Replikation im EventLog des aktiven Servers UND des Partners protokollieren.
-        /// Liefert einen Text für die Erfolgsmeldung. <paramref name="action"/> = "Manuell": nur
+        /// Liefert Text + Warnstatus für die Meldung. <paramref name="action"/> = "Manuell": nur
         /// "Bereich replizieren" (aus dem Scope-Kontextmenü), ohne vorherige Änderung.
+        /// Die EventLog-Einträge bleiben bewusst sprachunabhängig (feste Schlüssel/Werte).
         /// </summary>
-        private async Task<string> ReplicateAndLogAsync(string action, string scopeId, string ip, string details)
+        private async Task<ReplicationReport> ReplicateAndLogAsync(string action, string scopeId, string ip, string details)
         {
             var server = _activeServer;
             var rep = await RunReplicationAsync(server, scopeId);
@@ -32,7 +37,7 @@ namespace DhcpWmiViewer
                     $"Result=Angestoßen;Trigger={action};Source={server};Partner={rep.Partner};Relationship={rep.Relationship}"), "Information"));
 
             // Manuell ohne Failover-Beziehung: nichts passiert, nichts zu protokollieren
-            if (events.Count == 0) return rep.Describe();
+            if (events.Count == 0) return new ReplicationReport(rep.Describe(), rep.Error != null || rep.Skipped);
 
             // Zielserver: aktiver Server + Failover-Partner (live vom Server gelesen, keine feste Liste)
             // Partner steht in der Failover-Beziehung evtl. als IP -> für WinRM/Kerberos den DNS-Namen nehmen
@@ -51,9 +56,9 @@ namespace DhcpWmiViewer
             var failed = results.Where(r => !r.Ok).Select(r => r.Server).ToList();
 
             var text = new StringBuilder(rep.Describe());
-            if (ok.Count > 0) text.Append("\nProtokolliert im EventLog von: " + string.Join(", ", ok));
-            if (failed.Count > 0) text.Append("\nEventLog NICHT geschrieben auf: " + string.Join(", ", failed));
-            return text.ToString();
+            if (ok.Count > 0) text.Append("\n" + T("Protokolliert im EventLog von: ", "Logged in the event log of: ") + string.Join(", ", ok));
+            if (failed.Count > 0) text.Append("\n" + T("EventLog NICHT geschrieben auf: ", "Event log NOT written on: ") + string.Join(", ", failed));
+            return new ReplicationReport(text.ToString(), rep.Error != null || rep.Skipped || failed.Count > 0);
         }
 
         /// <summary>
@@ -66,7 +71,7 @@ namespace DhcpWmiViewer
             if (DhcpManager.IsRsatDhcpInstalled())
             {
                 ReplicationResult local = new(false, null, null);
-                await WaitDialog.RunAsync(this, "Bereich replizieren…", async () =>
+                await WaitDialog.RunAsync(this, T("Bereich replizieren…", "Replicating scope…"), async () =>
                     local = await DhcpManager.GetFailoverAndReplicateLocallyAsync(server, scopeId));
                 return local;
             }
@@ -75,40 +80,48 @@ namespace DhcpWmiViewer
             FailoverInfo? failover = null;
             try
             {
-                await WaitDialog.RunAsync(this, "Failover-Beziehung wird gelesen…", async () =>
+                await WaitDialog.RunAsync(this, T("Failover-Beziehung wird gelesen…", "Reading failover relationship…"), async () =>
                     failover = await DhcpManager.GetFailoverAsync(server, scopeId, GetCredentialsForServer));
             }
             catch (Exception ex)
             {
-                return new ReplicationResult(false, null, "Failover-Beziehung konnte nicht gelesen werden: " + ex.Message);
+                return new ReplicationResult(false, null, T("Failover-Beziehung konnte nicht gelesen werden: ", "Could not read the failover relationship: ") + ex.Message);
             }
             if (failover == null) return new ReplicationResult(false, null, null);
 
             if (!DhcpManager.IsRsatDhcpInstalled())
             {
                 var answer = MessageBox.Show(this,
-                    $"Für \"Bereich replizieren\" (Scope {scopeId} → {failover.Partner}) werden auf diesem PC die " +
-                    "RSAT-DHCP-Tools benötigt. Sie sind nicht installiert.\n\n" +
-                    "Sollen die RSAT-DHCP-Tools jetzt installiert werden?\n" +
-                    "(Windows-Funktion, braucht Adminrechte und Windows Update, einmalig pro PC)\n\n" +
-                    "Dauer: zuletzt ca. 16 Minuten über VPN, davon ca. 10 Minuten Download.\n" +
-                    "Der Download geht im Büro meist schneller.\n\n" +
-                    "Bei \"Nein\" wird \"Bereich replizieren\" übersprungen.",
-                    "RSAT-DHCP-Tools installieren?", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
+                    T($"Für \"Bereich replizieren\" (Scope {scopeId} → {failover.Partner}) werden auf diesem PC die " +
+                      "RSAT-DHCP-Tools benötigt. Sie sind nicht installiert.\n\n" +
+                      "Sollen die RSAT-DHCP-Tools jetzt installiert werden?\n" +
+                      "(Windows-Funktion, braucht Adminrechte und Windows Update, einmalig pro PC)\n\n" +
+                      "Dauer: zuletzt ca. 16 Minuten über VPN, davon ca. 10 Minuten Download.\n" +
+                      "Der Download geht im Büro meist schneller.\n\n" +
+                      "Bei \"Nein\" wird \"Bereich replizieren\" übersprungen.",
+                      $"Replicating the scope ({scopeId} → {failover.Partner}) requires the RSAT DHCP tools on this PC. " +
+                      "They are not installed.\n\n" +
+                      "Install the RSAT DHCP tools now?\n" +
+                      "(Windows feature, requires admin rights and Windows Update, once per PC)\n\n" +
+                      "Duration: last time about 16 minutes over VPN, about 10 minutes of it download.\n" +
+                      "The download is usually faster in the office.\n\n" +
+                      "If you choose \"No\", replicating the scope is skipped."),
+                    T("RSAT-DHCP-Tools installieren?", "Install RSAT DHCP tools?"), MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
                 if (answer != DialogResult.Yes)
                     return new ReplicationResult(false, failover, null, Skipped: true);
 
                 string? installError = null;
-                await WaitDialog.RunAsync(this, "RSAT-DHCP-Tools werden installiert… (kann einige Minuten dauern)", async progress =>
+                await WaitDialog.RunAsync(this, T("RSAT-DHCP-Tools werden installiert… (kann einige Minuten dauern)", "Installing RSAT DHCP tools… (may take several minutes)"), async progress =>
                     installError = await DhcpManager.InstallRsatDhcpAsync(progress));
                 if (installError != null)
                     return new ReplicationResult(false, failover,
-                        "Installation der RSAT-DHCP-Tools fehlgeschlagen: " + installError +
-                        "\n(Bei WSUS ggf. per GPO \"Optionale Komponenten direkt von Windows Update herunterladen\" erlauben.)");
+                        T("Installation der RSAT-DHCP-Tools fehlgeschlagen: ", "Installing the RSAT DHCP tools failed: ") + installError +
+                        T("\n(Bei WSUS ggf. per GPO \"Optionale Komponenten direkt von Windows Update herunterladen\" erlauben.)",
+                          "\n(With WSUS, allow \"Download repair content and optional features directly from Windows Update\" via GPO.)"));
             }
 
             ReplicationResult rep = new(false, failover, null);
-            await WaitDialog.RunAsync(this, "Bereich replizieren…", async () =>
+            await WaitDialog.RunAsync(this, T("Bereich replizieren…", "Replicating scope…"), async () =>
                 rep = await DhcpManager.ReplicateScopeLocallyAsync(server, scopeId, failover));
             return rep;
         }

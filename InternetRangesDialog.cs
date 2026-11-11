@@ -1,4 +1,5 @@
 // InternetRangesDialog.cs
+using static DhcpWmiViewer.Loc;
 namespace DhcpWmiViewer
 {
     /// <summary>
@@ -11,7 +12,7 @@ namespace DhcpWmiViewer
 
         private InternetRangesDialog()
         {
-            Text = "Internet-Bereiche (Firewall)";
+            Text = T("Internet-Bereiche (Firewall)", "Internet ranges (firewall)");
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;
@@ -26,11 +27,16 @@ namespace DhcpWmiViewer
             {
                 Dock = DockStyle.Top,
                 Height = 92,
-                Text = "Optional: IP-Bereiche, die ins Internet dürfen (z. B. von der Firewall vorgegeben).\n" +
-                       "Adressen daraus werden in der IP-Auswahl mit 🌐 markiert und lassen sich filtern; " +
-                       "der Bestätigungsdialog zeigt „mit/ohne Internetfreigabe“.\n\n" +
-                       "Ein Bereich pro Zeile, z. B. 10.0.0.10-10.0.0.50 (einzelne Adresse auch möglich). " +
-                       "Leer lassen = Funktion aus."
+                Text = T("Optional: IP-Bereiche, die ins Internet dürfen (z. B. von der Firewall vorgegeben).\n" +
+                         "Adressen daraus werden in der IP-Auswahl mit 🌐 markiert und lassen sich filtern; " +
+                         "der Bestätigungsdialog zeigt „mit/ohne Internetfreigabe“.\n\n" +
+                         "Ein Bereich pro Zeile, z. B. 10.0.0.10-10.0.0.50 (einzelne Adresse auch möglich). " +
+                         "Leer lassen = Funktion aus.",
+                         "Optional: IP ranges that may reach the internet (e.g. defined by your firewall).\n" +
+                         "Addresses in them are marked with 🌐 in the IP picker and can be filtered; " +
+                         "the confirmation shows \"with/without internet access\".\n\n" +
+                         "One range per line, e.g. 10.0.0.10-10.0.0.50 (a single address works too). " +
+                         "Leave empty = feature off.")
             };
 
             _txt = new TextBox
@@ -43,8 +49,8 @@ namespace DhcpWmiViewer
                 Text = string.Join(Environment.NewLine, AppConfig.InternetRanges.Select(r => r.Start == r.End ? r.Start : $"{r.Start}-{r.End}"))
             };
 
-            var ok = Theme.PrimaryButton("Speichern");
-            var cancel = Theme.SecondaryButton("Abbrechen");
+            var ok = Theme.PrimaryButton(T("Speichern", "Save"));
+            var cancel = Theme.SecondaryButton(T("Abbrechen", "Cancel"));
             cancel.DialogResult = DialogResult.Cancel;
             ok.Click += (s, e) => Save();
 
@@ -69,8 +75,8 @@ namespace DhcpWmiViewer
             var ranges = AppConfig.ParseRanges(_txt.Text, out var errors);
             if (errors.Count > 0)
             {
-                MessageBox.Show(this, "Diese Einträge sind keine gültigen Bereiche (Format: von-bis, von ≤ bis):\n\n" + string.Join("\n", errors),
-                    "Ungültige Eingabe", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, T("Diese Einträge sind keine gültigen Bereiche (Format: von-bis, von ≤ bis):", "These entries are not valid ranges (format: from-to, from ≤ to):") + "\n\n" + string.Join("\n", errors),
+                    T("Ungültige Eingabe", "Invalid input"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -80,7 +86,7 @@ namespace DhcpWmiViewer
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Die Einstellung konnte nicht gespeichert werden:\n" + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Die Einstellung konnte nicht gespeichert werden:", "The setting could not be saved:") + "\n" + ex.Message, T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 

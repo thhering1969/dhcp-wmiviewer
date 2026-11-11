@@ -14,7 +14,7 @@ namespace DhcpWmiViewer
             Helpers.WriteDebugLog($"CreateReservation: Server={server}, ScopeId={scopeId}, IP={ipAddress}, ClientId={clientId}, Name={name}");
 
             if (await ReservationExistsAsync(server, scopeId, ipAddress, getCredentials).ConfigureAwait(false))
-                throw new InvalidOperationException("IP address " + ipAddress + " is already reserved.");
+                throw new InvalidOperationException(Loc.T($"Die IP-Adresse {ipAddress} ist bereits reserviert.", $"IP address {ipAddress} is already reserved."));
 
             await AddReservationAsync(server, scopeId, ipAddress, clientId, name, description, getCredentials).ConfigureAwait(false);
         }
@@ -30,7 +30,7 @@ namespace DhcpWmiViewer
             Helpers.WriteDebugLog($"ChangeReservationIp: Server={server}, ScopeId={scopeId}, {oldIp} -> {newIp}, ClientId={clientId}");
 
             if (await ReservationExistsAsync(server, scopeId, newIp, getCredentials).ConfigureAwait(false))
-                throw new InvalidOperationException("IP address " + newIp + " is already reserved.");
+                throw new InvalidOperationException(Loc.T($"Die IP-Adresse {newIp} ist bereits reserviert.", $"IP address {newIp} is already reserved."));
 
             await AddReservationAsync(server, scopeId, newIp, clientId, name, description, getCredentials).ConfigureAwait(false);
 

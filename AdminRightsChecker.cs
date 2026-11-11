@@ -1,4 +1,5 @@
 // AdminRightsChecker.cs
+using static DhcpWmiViewer.Loc;
 using System.Security.Principal;
 
 namespace DhcpWmiViewer
@@ -44,21 +45,26 @@ namespace DhcpWmiViewer
                 if (!IsRunningAsAdministrator() && AppConfig.ShowAdminWarning)
                 {
                     _hasShownAdminWarning = true; // Markiere als angezeigt, bevor der Dialog gezeigt wird
-                var message = "⚠️ WARNUNG: Administratorrechte erforderlich\n\n" +
-                             "Diese Anwendung wurde nicht als Administrator gestartet.\n" +
-                             "Für die DHCP-Verwaltung sind Administratorrechte erforderlich.\n\n" +
-                             "Mögliche Probleme:\n" +
-                             "• Keine Verbindung zu DHCP-Servern möglich\n" +
-                             "• PowerShell-Befehle schlagen fehl\n" +
-                             "• WMI-Zugriff wird verweigert\n\n";
+                var message = T("⚠️ WARNUNG: Administratorrechte erforderlich\n\n" +
+                               "Diese Anwendung wurde nicht als Administrator gestartet.\n" +
+                               "Für die DHCP-Verwaltung sind Administratorrechte erforderlich.\n\n" +
+                               "Mögliche Probleme:\n" +
+                               "• Keine Verbindung zu DHCP-Servern möglich\n" +
+                               "• PowerShell-Befehle schlagen fehl\n\n",
+                               "⚠️ WARNING: administrator rights required\n\n" +
+                               "This application was not started as administrator.\n" +
+                               "DHCP management requires administrator rights.\n\n" +
+                               "Possible problems:\n" +
+                               "• No connection to DHCP servers\n" +
+                               "• PowerShell commands fail\n\n");
 
                 if (AppConfig.EnableAutoRestartAsAdmin)
                 {
-                    message += "Möchten Sie die Anwendung automatisch als Administrator neu starten?";
+                    message += T("Möchten Sie die Anwendung automatisch als Administrator neu starten?", "Restart the application as administrator now?");
                     
                     var result = MessageBox.Show(
                         message,
-                        "DHCP WMI Viewer - Administratorrechte erforderlich",
+                        T("DHCP WMI Viewer - Administratorrechte erforderlich", "DHCP WMI Viewer - administrator rights required"),
                         MessageBoxButtons.YesNoCancel,
                         MessageBoxIcon.Warning,
                         MessageBoxDefaultButton.Button1
@@ -77,9 +83,11 @@ namespace DhcpWmiViewer
                                 // Neustart fehlgeschlagen - zeige Fehlermeldung, aber setze Flag nicht zurück
                                 // um weitere Admin-Warnungen zu verhindern
                                 MessageBox.Show(
-                                    "Automatischer Neustart als Administrator fehlgeschlagen.\n" +
-                                    "Bitte starten Sie die Anwendung manuell als Administrator.",
-                                    "Neustart fehlgeschlagen",
+                                    T("Automatischer Neustart als Administrator fehlgeschlagen.\n" +
+                                      "Bitte starten Sie die Anwendung manuell als Administrator.",
+                                      "Restarting as administrator failed.\n" +
+                                      "Please start the application as administrator manually."),
+                                    T("Neustart fehlgeschlagen", "Restart failed"),
                                     MessageBoxButtons.OK,
                                     MessageBoxIcon.Warning
                                 );
@@ -98,14 +106,18 @@ namespace DhcpWmiViewer
                 }
                 else
                 {
-                    message += "Empfehlung:\n" +
-                              "Starten Sie die Anwendung als Administrator neu.\n" +
-                              "(Rechtsklick → 'Als Administrator ausführen')\n\n" +
-                              "Möchten Sie trotzdem fortfahren?";
+                    message += T("Empfehlung:\n" +
+                                "Starten Sie die Anwendung als Administrator neu.\n" +
+                                "(Rechtsklick → 'Als Administrator ausführen')\n\n" +
+                                "Möchten Sie trotzdem fortfahren?",
+                                "Recommendation:\n" +
+                                "Restart the application as administrator.\n" +
+                                "(Right-click → 'Run as administrator')\n\n" +
+                                "Continue anyway?");
 
                     var result = MessageBox.Show(
                         message,
-                        "DHCP WMI Viewer - Administratorrechte erforderlich",
+                        T("DHCP WMI Viewer - Administratorrechte erforderlich", "DHCP WMI Viewer - administrator rights required"),
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Warning,
                         MessageBoxDefaultButton.Button2
@@ -162,9 +174,11 @@ namespace DhcpWmiViewer
                 if (ex.NativeErrorCode == 1223) // ERROR_CANCELLED
                 {
                     MessageBox.Show(
-                        "Der Benutzer hat die Administratorrechte-Anfrage abgebrochen.\n" +
-                        "Die Anwendung wird ohne Administratorrechte fortgesetzt.",
-                        "UAC abgebrochen",
+                        T("Der Benutzer hat die Administratorrechte-Anfrage abgebrochen.\n" +
+                          "Die Anwendung wird ohne Administratorrechte fortgesetzt.",
+                          "The administrator rights request was cancelled.\n" +
+                          "The application continues without administrator rights."),
+                        T("UAC abgebrochen", "UAC cancelled"),
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information
                     );
@@ -188,19 +202,20 @@ namespace DhcpWmiViewer
                 {
                     var principal = new WindowsPrincipal(identity);
                     var isAdmin = principal.IsInRole(WindowsBuiltInRole.Administrator);
-                    var userName = identity.Name ?? "Unbekannt";
-                    var authType = identity.AuthenticationType ?? "Unbekannt";
+                    var userName = identity.Name ?? T("Unbekannt", "Unknown");
+                    var authType = identity.AuthenticationType ?? T("Unbekannt", "Unknown");
                     var isAuthenticated = identity.IsAuthenticated;
 
-                    return $"Benutzer: {userName}\n" +
-                           $"Authentifizierung: {authType}\n" +
-                           $"Authentifiziert: {(isAuthenticated ? "Ja" : "Nein")}\n" +
-                           $"Administrator: {(isAdmin ? "Ja" : "Nein")}";
+                    var yes = T("Ja", "Yes"); var no = T("Nein", "No");
+                    return T("Benutzer: ", "User: ") + userName + "\n" +
+                           T("Authentifizierung: ", "Authentication: ") + authType + "\n" +
+                           T("Authentifiziert: ", "Authenticated: ") + (isAuthenticated ? yes : no) + "\n" +
+                           "Administrator: " + (isAdmin ? yes : no);
                 }
             }
             catch (Exception ex)
             {
-                return $"Fehler beim Abrufen der Benutzerinformationen: {ex.Message}";
+                return T("Fehler beim Abrufen der Benutzerinformationen: ", "Error reading user information: ") + ex.Message;
             }
         }
 
@@ -234,14 +249,14 @@ namespace DhcpWmiViewer
             var info = GetCurrentUserInfo();
             var integratedAuth = IsIntegratedAuthAvailable();
             
-            var message = $"Sicherheitsinformationen:\n\n{info}\n\n" +
-                         $"Integrierte Authentifizierung: {(integratedAuth ? "Verfügbar" : "Nicht verfügbar")}\n\n" +
-                         "Hinweis: Für optimale Funktionalität sollte die Anwendung\n" +
-                         "als Administrator mit integrierter Windows-Authentifizierung laufen.";
+            var message = T("Sicherheitsinformationen:", "Security information:") + $"\n\n{info}\n\n" +
+                         T("Integrierte Authentifizierung: ", "Integrated authentication: ") + (integratedAuth ? T("Verfügbar", "available") : T("Nicht verfügbar", "not available")) + "\n\n" +
+                         T("Hinweis: Für optimale Funktionalität sollte die Anwendung\nals Administrator mit integrierter Windows-Authentifizierung laufen.",
+                           "Note: for best results run the application\nas administrator with integrated Windows authentication.");
 
             MessageBox.Show(
                 message,
-                "DHCP WMI Viewer - Sicherheitsinformationen",
+                T("DHCP WMI Viewer - Sicherheitsinformationen", "DHCP WMI Viewer - security information"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information
             );

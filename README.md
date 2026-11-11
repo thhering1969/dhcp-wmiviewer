@@ -11,7 +11,8 @@ A Windows desktop tool for everyday work on **Windows DHCP servers**: view scope
 leases, turn leases into reservations, and change or delete reservations – with a confirmation before
 every change and automatic **failover replication** to the partner server.
 
-> The user interface is in German.
+> The user interface is available in English and German. It follows the Windows display language;
+> *Extras → Sprache / Language* overrides it.
 
 ## Highlights
 
@@ -57,10 +58,10 @@ The app asks to restart with administrator rights if it was not started elevated
 1. Start the app, enter a DHCP server or click **Discover** and pick one; press **Query Scopes** (or Enter)
 2. Select a scope – reservations and leases load in the tabs below
 3. **Leases** tab: right-click → *Create reservation from lease…* (with IP picker)
-4. **Reservations** tab: right-click → *Ändern…* (edit name, description, IP) or *Löschen* (delete);
+4. **Reservations** tab: right-click → *Edit…* (name, description, IP) or *Delete*;
    double-click also opens the editor
 5. **Events** tab: changes made with this app, from all active DHCP servers
-6. Scope table: right-click → *Bereich replizieren…* (replicate scope) manually
+6. Scope table: right-click → *Replicate scope…* manually
 7. **Export CSV** saves the scope list
 
 The last queried server is remembered.
@@ -80,19 +81,21 @@ EnableAutoRestartAsAdmin=true
 ShowAdminWarning=true
 # set automatically after a successful query
 LastServer=dhcp01.example.com
+# optional: de or en (empty = Windows display language)
+Language=en
 # optional, see below (empty = feature off)
 InternetRanges=10.0.0.10-10.0.0.50, 10.0.0.200-10.0.0.254
 ```
 
 **Internet ranges (optional):** if only certain addresses may reach the internet (e.g. defined by your
-firewall), enter them under *Extras → Internet-Bereiche (Firewall)…*. The IP picker then marks them
-with 🌐 and can filter for them, and the confirmation shows "mit/ohne Internetfreigabe"
-(with/without internet access). Without entries the feature is hidden.
+firewall), enter them under *Extras → Internet ranges (firewall)…*. The IP picker then marks them
+with 🌐 and can filter for them, and the confirmation shows "with/without internet access".
+Without entries the feature is hidden.
 
 **Defaults for many PCs:** place a `DhcpWmiViewer.config.txt` (same format) next to the EXE, e.g. on a
 network share. User settings take precedence.
 
-*Extras → PowerShell-Befehle vor Ausführung anzeigen* shows every command before it runs (debug).
+*Extras → Show PowerShell commands before running* shows every command before it runs (debug).
 
 ## Troubleshooting
 
@@ -133,6 +136,7 @@ which builds the portable EXE and ZIP and publishes a GitHub release.
 | `ConfirmChangeDialog.cs` | Before/after confirmation |
 | `IpPickerForm.cs`, `IpRanges.cs` | IP picker, scope address space, internet ranges |
 | `AppConfig.cs`, `InternetRangesDialog.cs` | Settings |
+| `Loc.cs` | German/English UI texts (`Loc.T("Deutsch", "English")`) |
 | `Theme.cs`, `WaitDialog.cs` | Look & feel, progress dialog |
 
 ## Contributing

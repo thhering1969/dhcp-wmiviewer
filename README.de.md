@@ -11,6 +11,9 @@ Ein Windows-Tool für die tägliche Arbeit mit **Windows-DHCP-Servern**: Scopes,
 anzeigen, Leases in Reservierungen umwandeln, Reservierungen ändern oder löschen – mit Bestätigung vor
 jeder Änderung und automatischem **„Bereich replizieren“** zum Failover-Partner.
 
+> Die Oberfläche gibt es auf Deutsch und Englisch. Sie richtet sich nach der Windows-Anzeigesprache;
+> *Extras → Sprache / Language* legt sie fest.
+
 ## Highlights
 
 - **Server-Erkennung aus dem Active Directory** – zeigt nur DHCP-Server, die noch existieren und erreichbar
@@ -54,7 +57,7 @@ Ohne Adminrechte gestartet, bietet die App einen Neustart als Administrator an.
 
 1. App starten, DHCP-Server eintragen oder **Discover** klicken und auswählen; **Query Scopes** (oder Enter)
 2. Scope auswählen – Reservierungen und Leases werden in den Tabs darunter geladen
-3. Tab **Leases**: Rechtsklick → *Create reservation from lease…* (mit IP-Auswahl)
+3. Tab **Leases**: Rechtsklick → *Reservation aus Lease erstellen…* (mit IP-Auswahl)
 4. Tab **Reservations**: Rechtsklick → *Ändern…* (Name, Beschreibung, IP) oder *Löschen*;
    Doppelklick öffnet ebenfalls „Ändern“
 5. Tab **Events**: Änderungen mit dieser App, von allen aktiven DHCP-Servern
@@ -78,6 +81,8 @@ EnableAutoRestartAsAdmin=true
 ShowAdminWarning=true
 # wird nach jeder erfolgreichen Abfrage gesetzt
 LastServer=dhcp01.example.com
+# optional: de oder en (leer = Windows-Anzeigesprache)
+Language=de
 # optional, siehe unten (leer = aus)
 InternetRanges=10.0.0.10-10.0.0.50, 10.0.0.200-10.0.0.254
 ```
@@ -131,6 +136,7 @@ Workflow baut Portable-EXE und ZIP und veröffentlicht ein GitHub-Release.
 | `ConfirmChangeDialog.cs` | Bestätigung vorher/nachher |
 | `IpPickerForm.cs`, `IpRanges.cs` | IP-Auswahl, Scope-Adressraum, Internet-Bereiche |
 | `AppConfig.cs`, `InternetRangesDialog.cs` | Einstellungen |
+| `Loc.cs` | Oberflächentexte Deutsch/Englisch (`Loc.T("Deutsch", "English")`) |
 | `Theme.cs`, `WaitDialog.cs` | Aussehen, Fortschrittsanzeige |
 
 ## Mitmachen

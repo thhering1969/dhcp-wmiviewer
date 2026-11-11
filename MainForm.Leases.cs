@@ -1,4 +1,5 @@
 // MainForm.Leases.cs
+using static DhcpWmiViewer.Loc;
 namespace DhcpWmiViewer
 {
     public partial class MainForm
@@ -6,8 +7,8 @@ namespace DhcpWmiViewer
         private ContextMenuStrip CreateLeasesContextMenu()
         {
             var menu = new ContextMenuStrip();
-            var create = new ToolStripMenuItem("Create reservation from lease...", null, async (s, e) => await CreateReservationFromSelectedLeaseAsync());
-            var refresh = new ToolStripMenuItem("Refresh leases", null, async (s, e) => await RefreshSelectedScopeAsync());
+            var create = new ToolStripMenuItem(T("Reservation aus Lease erstellen...", "Create reservation from lease..."), null, async (s, e) => await CreateReservationFromSelectedLeaseAsync());
+            var refresh = new ToolStripMenuItem(T("Leases aktualisieren", "Refresh leases"), null, async (s, e) => await RefreshSelectedScopeAsync());
             menu.Items.AddRange(new ToolStripItem[] { create, new ToolStripSeparator(), refresh });
 
             menu.Opening += (s, e) => create.Enabled = dgvLeases.SelectedRows.Count == 1;
@@ -19,14 +20,14 @@ namespace DhcpWmiViewer
         {
             if (dgvLeases.SelectedRows.Count != 1)
             {
-                MessageBox.Show(this, "Bitte zuerst eine Lease auswählen.", "Keine Auswahl", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, T("Bitte zuerst eine Lease auswählen.", "Please select a lease first."), T("Keine Auswahl", "No selection"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             var scopeId = GetSelectedScopeId();
             if (string.IsNullOrWhiteSpace(scopeId))
             {
-                MessageBox.Show(this, "Bitte zuerst einen Scope auswählen.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Bitte zuerst einen Scope auswählen.", "Please select a scope first."), T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -56,29 +57,29 @@ namespace DhcpWmiViewer
 
             var fields = new List<ConfirmChangeDialog.Field>
             {
-                new("IP-Adresse", null, GetSelectedScopeAddressSpace().Describe(ip)),
-                new("ClientId (MAC)", null, clientId),
-                new("Name", null, name),
-                new("Beschreibung", null, description)
+                new(T("IP-Adresse", "IP address"), null, GetSelectedScopeAddressSpace().Describe(ip), "IP"),
+                new("ClientId (MAC)", null, clientId, "ClientId"),
+                new("Name", null, name, "Name"),
+                new(T("Beschreibung", "Description"), null, description, "Description")
             };
-            if (!ConfirmChangeDialog.Confirm(this, "Reservation anlegen", $"Neue Reservation {ip} anlegen", server, scopeId, fields))
+            if (!ConfirmChangeDialog.Confirm(this, T("Reservation anlegen", "Create reservation"), T($"Neue Reservation {ip} anlegen", $"Create new reservation {ip}"), server, scopeId, fields))
                 return;
 
             try
             {
                 Helpers.WriteDebugLog($"CREATE reservation: srv={server}, scopeId={scopeId}, ip={ip}, clientId={clientId}");
-                await WaitDialog.RunAsync(this, "Reservation wird angelegt…", () =>
+                await WaitDialog.RunAsync(this, T("Reservation wird angelegt…", "Creating reservation…"), () =>
                     DhcpManager.CreateReservationAsync(server, scopeId, ip, clientId, name, description, GetCredentialsForServer));
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Reservation konnte nicht erstellt werden:\r\n" + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Reservation konnte nicht erstellt werden:", "Could not create the reservation:") + "\r\n" + ex.Message, T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
-            await WaitDialog.RunAsync(this, "Aktualisiere Ansicht…", RefreshSelectedScopeAsync);
+            await WaitDialog.RunAsync(this, T("Aktualisiere Ansicht…", "Refreshing view…"), RefreshSelectedScopeAsync);
             var replication = await ReplicateAndLogAsync("ConvertLeaseToReservation", scopeId, ip, $"ClientId={clientId};Name={name}");
-            ShowSuccess("Reservation angelegt:\n\n" + ConfirmChangeDialog.Summarize(fields), replication);
+            ShowSuccess(T("Reservation angelegt:", "Reservation created:") + "\n\n" + ConfirmChangeDialog.Summarize(fields), replication);
         }
     }
 }

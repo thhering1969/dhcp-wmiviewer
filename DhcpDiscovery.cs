@@ -94,13 +94,13 @@ namespace DhcpWmiViewer
             {
                 var adState = await Task.Run(() => GetComputerAccountState(server));
                 if (adState == ComputerAccountState.Missing)
-                    return new ServerCheck(server, false, "kein Computerkonto im AD");
+                    return new ServerCheck(server, false, Loc.T("kein Computerkonto im AD", "no computer account in AD"));
                 if (adState == ComputerAccountState.Disabled)
-                    return new ServerCheck(server, false, "Computerkonto deaktiviert");
+                    return new ServerCheck(server, false, Loc.T("Computerkonto deaktiviert", "computer account disabled"));
 
                 return await IsWinRmReachableAsync(server, timeoutMs)
                     ? new ServerCheck(server, true, "ok")
-                    : new ServerCheck(server, false, "nicht erreichbar");
+                    : new ServerCheck(server, false, Loc.T("nicht erreichbar", "unreachable"));
             });
             return (await Task.WhenAll(checks)).ToList();
         }

@@ -1,4 +1,5 @@
 // MainForm.Layout.cs
+using static DhcpWmiViewer.Loc;
 namespace DhcpWmiViewer
 {
     public partial class MainForm
@@ -63,7 +64,7 @@ namespace DhcpWmiViewer
             // Unterer Bereich: Überschrift + Tabs
             var detailsArea = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background };
             detailsArea.Controls.Add(tabs);
-            detailsArea.Controls.Add(Theme.SectionTitle("Details zum ausgewählten Scope", Font));
+            detailsArea.Controls.Add(Theme.SectionTitle(T("Details zum ausgewählten Scope", "Details of the selected scope"), Font));
 
             var split = new SplitContainer
             {
@@ -118,15 +119,15 @@ namespace DhcpWmiViewer
             };
 
             var extrasMenu = new ToolStripMenuItem("&Extras");
-            extrasMenu.DropDownItems.Add("&Internet-Bereiche (Firewall)...", null, (s, e) =>
+            extrasMenu.DropDownItems.Add(T("&Internet-Bereiche (Firewall)...", "&Internet ranges (firewall)..."), null, (s, e) =>
             {
                 if (InternetRangesDialog.Edit(this))
                     UpdateStatus(AppConfig.InternetRanges.Count == 0
-                        ? "Internet-Bereiche entfernt – Markierung in der IP-Auswahl ist aus."
-                        : "Internet-Bereiche gespeichert: " + AppConfig.FormatRanges(AppConfig.InternetRanges));
+                        ? T("Internet-Bereiche entfernt – Markierung in der IP-Auswahl ist aus.", "Internet ranges removed – marking in the IP picker is off.")
+                        : T("Internet-Bereiche gespeichert: ", "Internet ranges saved: ") + AppConfig.FormatRanges(AppConfig.InternetRanges));
             });
             extrasMenu.DropDownItems.Add(new ToolStripSeparator());
-            var previewItem = new ToolStripMenuItem("PowerShell-Befehle vor Ausführung &anzeigen (Debug)")
+            var previewItem = new ToolStripMenuItem(T("PowerShell-Befehle vor Ausführung &anzeigen (Debug)", "&Show PowerShell commands before running (debug)"))
             {
                 CheckOnClick = true,
                 Checked = DhcpManager.ShowCommandPreview
@@ -134,12 +135,40 @@ namespace DhcpWmiViewer
             previewItem.CheckedChanged += (s, e) => DhcpManager.ShowCommandPreview = previewItem.Checked;
             extrasMenu.DropDownItems.Add(previewItem);
             extrasMenu.DropDownItems.Add(new ToolStripSeparator());
-            extrasMenu.DropDownItems.Add("Gespeicherte A&nmeldedaten löschen", null, (s, e) => ClearCredentialsWithInfo());
+            extrasMenu.DropDownItems.Add(T("Gespeicherte A&nmeldedaten löschen", "Clear saved &credentials"), null, (s, e) => ClearCredentialsWithInfo());
+            extrasMenu.DropDownItems.Add(new ToolStripSeparator());
+            extrasMenu.DropDownItems.Add(CreateLanguageMenu());
 
-            var helpMenu = new ToolStripMenuItem("&Hilfe");
-            helpMenu.DropDownItems.Add("&Sicherheitsinformationen...", null, (s, e) => AdminRightsChecker.ShowSecurityInfo());
+            ToolStripMenuItem CreateLanguageMenu()
+            {
+                // Sprache: automatisch (Windows-Anzeigesprache), Deutsch oder Englisch; wirkt nach Neustart
+                var langMenu = new ToolStripMenuItem("Sprache / &Language");
+                (string Code, string Label)[] options =
+                {
+                    ("", T("Automatisch (Windows-Sprache)", "Automatic (Windows language)")),
+                    ("de", "Deutsch"),
+                    ("en", "English")
+                };
+                foreach (var (code, label) in options)
+                {
+                    var item = new ToolStripMenuItem(label) { Checked = AppConfig.Language.Equals(code, StringComparison.OrdinalIgnoreCase) };
+                    item.Click += (s, e) =>
+                    {
+                        try { AppConfig.SaveLanguage(code); }
+                        catch (Exception ex) { MessageBox.Show(this, ex.Message, T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+                        foreach (ToolStripMenuItem other in langMenu.DropDownItems) other.Checked = other == item;
+                        MessageBox.Show(this, "Die Sprache wird beim nächsten Start der App übernommen.\nThe language takes effect the next time the app starts.",
+                            "Sprache / Language", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    };
+                    langMenu.DropDownItems.Add(item);
+                }
+                return langMenu;
+            }
+
+            var helpMenu = new ToolStripMenuItem(T("&Hilfe", "&Help"));
+            helpMenu.DropDownItems.Add(T("&Sicherheitsinformationen...", "&Security information..."), null, (s, e) => AdminRightsChecker.ShowSecurityInfo());
             helpMenu.DropDownItems.Add(new ToolStripSeparator());
-            helpMenu.DropDownItems.Add("&Über...", null, (s, e) => ShowAboutDialog());
+            helpMenu.DropDownItems.Add(T("&Über...", "&About..."), null, (s, e) => ShowAboutDialog());
 
             menuStrip.Items.Add(extrasMenu);
             menuStrip.Items.Add(helpMenu);
@@ -183,7 +212,7 @@ namespace DhcpWmiViewer
                 Text = AppConfig.LastServer.Length > 0 ? AppConfig.LastServer
                      : AppEnvironment.RunningOnDhcpServer ? Environment.MachineName : string.Empty,
                 Width = 220,
-                PlaceholderText = "Servername oder IP",
+                PlaceholderText = T("Servername oder IP", "Server name or IP"),
                 Margin = new Padding(0, 3, 6, 0)
             };
             // Enter im Serverfeld startet die Abfrage
@@ -193,7 +222,7 @@ namespace DhcpWmiViewer
                 e.SuppressKeyPress = true;
                 btnQuery.PerformClick();
             };
-            tips.SetToolTip(txtServer, "DHCP-Server, dessen Scopes abgefragt werden (Enter = Abfragen)");
+            tips.SetToolTip(txtServer, T("DHCP-Server, dessen Scopes abgefragt werden (Enter = Abfragen)", "DHCP server whose scopes are queried (Enter = query)"));
 
             cmbDiscoveredServers = new ComboBox
             {
@@ -206,29 +235,29 @@ namespace DhcpWmiViewer
             {
                 if (cmbDiscoveredServers.SelectedItem is { } item) txtServer.Text = item.ToString();
             };
-            tips.SetToolTip(cmbDiscoveredServers, "Im Active Directory gefundene DHCP-Server");
+            tips.SetToolTip(cmbDiscoveredServers, T("Im Active Directory gefundene DHCP-Server", "DHCP servers found in Active Directory"));
 
             btnDiscover = Theme.SecondaryButton("Discover");
             btnDiscover.Click += BtnDiscover_Click;
-            tips.SetToolTip(btnDiscover, "DHCP-Server im Active Directory suchen");
+            tips.SetToolTip(btnDiscover, T("DHCP-Server im Active Directory suchen", "Find DHCP servers in Active Directory"));
 
             btnQuery = Theme.PrimaryButton("Query Scopes");
             btnQuery.Margin = new Padding(6, 0, 0, 0);
             btnQuery.Click += BtnQuery_Click;
-            tips.SetToolTip(btnQuery, "Scopes des Servers abfragen");
+            tips.SetToolTip(btnQuery, T("Scopes des Servers abfragen", "Query the server's scopes"));
 
             var left = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Dock = DockStyle.Fill };
             left.Controls.AddRange(new Control[] { lbl, txtServer, cmbDiscoveredServers, btnDiscover, btnQuery });
 
             var btnClearCredentials = Theme.SecondaryButton("Clear Credentials");
             btnClearCredentials.Click += (s, e) => ClearCredentialsWithInfo();
-            tips.SetToolTip(btnClearCredentials, "Gespeicherte Anmeldedaten und offene Verbindungen verwerfen");
+            tips.SetToolTip(btnClearCredentials, T("Gespeicherte Anmeldedaten und offene Verbindungen verwerfen", "Discard saved credentials and open connections"));
 
             btnExportCsv = Theme.SecondaryButton("Export CSV");
             btnExportCsv.Margin = Padding.Empty;
             btnExportCsv.Enabled = false;
             btnExportCsv.Click += BtnExportCsv_Click;
-            tips.SetToolTip(btnExportCsv, "Scope-Liste als CSV speichern");
+            tips.SetToolTip(btnExportCsv, T("Scope-Liste als CSV speichern", "Save the scope list as CSV"));
 
             var right = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, Anchor = AnchorStyles.Top | AnchorStyles.Right };
             right.Controls.AddRange(new Control[] { btnClearCredentials, btnExportCsv });
@@ -271,8 +300,8 @@ namespace DhcpWmiViewer
         private void ClearCredentialsWithInfo()
         {
             ClearCredentialCache();
-            MessageBox.Show(this, "Credential cache cleared. Next connection will prompt for credentials again if needed.",
-                "Credentials Cleared", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, T("Gespeicherte Anmeldedaten gelöscht. Bei der nächsten Verbindung wird bei Bedarf erneut gefragt.", "Credential cache cleared. Next connection will prompt for credentials again if needed."),
+                T("Anmeldedaten gelöscht", "Credentials cleared"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         /// <summary>Einheitlich formatiertes, schreibgeschütztes Grid mit Zeilenauswahl.</summary>
@@ -329,7 +358,7 @@ namespace DhcpWmiViewer
             Add("ClientId", "ClientId", 200);
             Add("ClientType", "ClientType", 100);
             Add("HostName", "HostName", 160);
-            Add("Description", "Beschreibung", 200);
+            Add("Description", T("Beschreibung", "Description"), 200);
             Add("AddressState", "AddressState", 100);
             Add("LeaseExpiryTime", "LeaseExpiryTime", 160);
             Add("ScopeId", "ScopeId", 140);

@@ -10,7 +10,7 @@ namespace DhcpWmiViewer
 
         private WaitDialog(string message)
         {
-            _message = string.IsNullOrWhiteSpace(message) ? "Bitte warten…" : message;
+            _message = string.IsNullOrWhiteSpace(message) ? Loc.T("Bitte warten…", "Please wait…") : message;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
@@ -18,7 +18,7 @@ namespace DhcpWmiViewer
             MaximizeBox = false;
             Width = 380;
             Height = 176;
-            Text = "Bitte warten";
+            Text = Loc.T("Bitte warten", "Please wait");
 
             _bar = new ProgressBar { Dock = DockStyle.Bottom, Height = 22, Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 30 };
             _label = new Label

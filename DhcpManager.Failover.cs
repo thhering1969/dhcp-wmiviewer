@@ -1,5 +1,6 @@
 // DhcpManager.Failover.cs
 using System.Diagnostics;
+using static DhcpWmiViewer.Loc;
 using System.Management.Automation;
 using System.Text;
 
@@ -22,10 +23,10 @@ namespace DhcpWmiViewer
         /// <summary>Kurzer Text für Meldungen.</summary>
         public string Describe()
         {
-            if (Error != null) return "Bereich replizieren FEHLGESCHLAGEN: " + Error;
-            if (Skipped) return "Bereich replizieren ÜBERSPRUNGEN: Die RSAT-DHCP-Tools sind auf diesem PC nicht installiert.";
-            if (!HasFailover) return "Bereich replizieren: nicht nötig – für diesen Scope gibt es keine Failover-Beziehung.";
-            return $"Bereich replizieren: zu {Partner} ausgeführt (Failover-Beziehung \"{Relationship}\").";
+            if (Error != null) return T("Bereich replizieren FEHLGESCHLAGEN: ", "Replicate scope FAILED: ") + Error;
+            if (Skipped) return T("Bereich replizieren ÜBERSPRUNGEN: Die RSAT-DHCP-Tools sind auf diesem PC nicht installiert.", "Replicate scope SKIPPED: the RSAT DHCP tools are not installed on this PC.");
+            if (!HasFailover) return T("Bereich replizieren: nicht nötig – für diesen Scope gibt es keine Failover-Beziehung.", "Replicate scope: not needed – this scope has no failover relationship.");
+            return T($"Bereich replizieren: zu {Partner} ausgeführt (Failover-Beziehung \"{Relationship}\").", $"Replicate scope: done to {Partner} (failover relationship \"{Relationship}\").");
         }
     }
 
@@ -131,7 +132,7 @@ Invoke-DhcpServerv4FailoverReplication -ComputerName {Helpers.Quote(server)} -Sc
                     if (fatal && fatalError == null)
                     {
                         fatalError = error;
-                        progress?.Report((-1, "⚠ Fehler: " + Shorten(error ?? "", 70)));
+                        progress?.Report((-1, T("⚠ Fehler: ", "⚠ Error: ") + Shorten(error ?? "", 70)));
                         abort.Cancel();
                     }
                     else if (pct is int d && !downloadDone)
@@ -139,7 +140,7 @@ Invoke-DhcpServerv4FailoverReplication -ComputerName {Helpers.Quote(server)} -Sc
                         if (d != lastPct) { lastPct = d; lastChange = DateTime.Now; }
                         var stalled = DateTime.Now - lastChange;
                         var step = "Download";
-                        if (stalled >= TimeSpan.FromMinutes(2)) step += $" (seit {(int)stalled.TotalMinutes} min unverändert)";
+                        if (stalled >= TimeSpan.FromMinutes(2)) step += T($" (seit {(int)stalled.TotalMinutes} min unverändert)", $" (unchanged for {(int)stalled.TotalMinutes} min)");
                         progress?.Report((d, step));
                         if (d >= 100) downloadDone = true;
                     }
@@ -154,9 +155,9 @@ Invoke-DhcpServerv4FailoverReplication -ComputerName {Helpers.Quote(server)} -Sc
                     // dism.exe meldet den Gesamtfortschritt als "[====   42.5%   ]"
                     var (exitCode, output) = await RunDismAsync(
                         $"/Online /Add-Capability /CapabilityName:{RsatDhcpCapability} /NoRestart",
-                        pct => { if (downloadDone || pct >= 100) progress?.Report((pct, "Installation")); },
+                        pct => { if (downloadDone || pct >= 100) progress?.Report((pct, T("Installation", "Installing"))); },
                         TimeSpan.FromMinutes(30), abort.Token).ConfigureAwait(false);
-                    if (fatalError != null) return "Abgebrochen wegen Fehler im Windows-Protokoll (CBS.log): " + fatalError;
+                    if (fatalError != null) return T("Abgebrochen wegen Fehler im Windows-Protokoll (CBS.log): ", "Aborted due to an error in the Windows log (CBS.log): ") + fatalError;
                     // 3010 = erfolgreich, Neustart empfohlen
                     if (IsRsatDhcpInstalled()) return null; // maßgeblich ist, ob das Modul da ist (auch bei Zeitüberschreitung)
                     return DismError(output, exitCode);
@@ -168,14 +169,14 @@ Invoke-DhcpServerv4FailoverReplication -ComputerName {Helpers.Quote(server)} -Sc
                     "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + Encode(script))
                 { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Minimized };
                 using var p = Process.Start(psi);
-                if (p == null) return "Installation konnte nicht gestartet werden.";
+                if (p == null) return T("Installation konnte nicht gestartet werden.", "The installation could not be started.");
                 try { await p.WaitForExitAsync(abort.Token).ConfigureAwait(false); }
-                catch (OperationCanceledException) { return "Abgebrochen wegen Fehler im Windows-Protokoll (CBS.log): " + fatalError; }
-                return IsRsatDhcpInstalled() ? null : $"Installation nicht abgeschlossen (Exit-Code {p.ExitCode}).";
+                catch (OperationCanceledException) { return T("Abgebrochen wegen Fehler im Windows-Protokoll (CBS.log): ", "Aborted due to an error in the Windows log (CBS.log): ") + fatalError; }
+                return IsRsatDhcpInstalled() ? null : T($"Installation nicht abgeschlossen (Exit-Code {p.ExitCode}).", $"Installation not completed (exit code {p.ExitCode}).");
             }
             catch (System.ComponentModel.Win32Exception)
             {
-                return "Die Installation wurde abgebrochen (keine Adminrechte bestätigt).";
+                return T("Die Installation wurde abgebrochen (keine Adminrechte bestätigt).", "The installation was cancelled (administrator rights not confirmed).");
             }
             finally
             {
@@ -286,7 +287,7 @@ Invoke-DhcpServerv4FailoverReplication -ComputerName {Helpers.Quote(server)} -Sc
             catch (OperationCanceledException)
             {
                 try { p.Kill(entireProcessTree: true); } catch { }
-                return (-1, $"Zeitüberschreitung nach {timeout.TotalMinutes:0} Minuten.");
+                return (-1, T($"Zeitüberschreitung nach {timeout.TotalMinutes:0} Minuten.", $"Timed out after {timeout.TotalMinutes:0} minutes."));
             }
 
             return (p.ExitCode, all + await stderr.ConfigureAwait(false));
@@ -299,7 +300,7 @@ Invoke-DhcpServerv4FailoverReplication -ComputerName {Helpers.Quote(server)} -Sc
             var idx = lines.FindIndex(l => l.StartsWith("Error", StringComparison.OrdinalIgnoreCase));
             var text = idx >= 0 ? string.Join(" ", lines.Skip(idx).Take(3)) : $"DISM Exit-Code {exitCode}";
             if (output.Contains("0x800f0954", StringComparison.OrdinalIgnoreCase))
-                text += " – Windows Update/WSUS liefert die optionale Funktion nicht.";
+                text += T(" – Windows Update/WSUS liefert die optionale Funktion nicht.", " – Windows Update/WSUS does not provide the optional feature.");
             return text;
         }
 
@@ -333,7 +334,7 @@ Invoke-DhcpServerv4FailoverReplication -ComputerName {Helpers.Quote(server)} -Sc
             catch (OperationCanceledException)
             {
                 try { p.Kill(entireProcessTree: true); } catch { }
-                return (-1, $"Zeitüberschreitung nach {timeout.TotalMinutes:0} Minuten.");
+                return (-1, T($"Zeitüberschreitung nach {timeout.TotalMinutes:0} Minuten.", $"Timed out after {timeout.TotalMinutes:0} minutes."));
             }
 
             var output = (await stdout.ConfigureAwait(false)) + (await stderr.ConfigureAwait(false));
