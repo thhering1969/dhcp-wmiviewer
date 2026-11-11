@@ -115,15 +115,13 @@ dotnet build -c Release
 
 If you discover a security vulnerability, please:
 1. **DO NOT** create a public issue
-2. Email the maintainer directly
-3. Provide detailed information about the vulnerability
+2. Report it privately via **Security → Report a vulnerability** on GitHub
+3. Provide detailed information about the vulnerability (without internal server names or addresses)
 4. Allow time for the issue to be addressed before disclosure
 
 ## 📞 Getting Help
 
-- **Questions**: Use [GitHub Discussions](https://github.com/thhering1969/dhcp-wmiviewer/discussions)
-- **Issues**: Use [GitHub Issues](https://github.com/thhering1969/dhcp-wmiviewer/issues)
-- **Chat**: Join our community discussions
+- **Questions, bugs and ideas**: Use [GitHub Issues](https://github.com/thhering1969/dhcp-wmiviewer/issues)
 
 ## 📄 License
 
