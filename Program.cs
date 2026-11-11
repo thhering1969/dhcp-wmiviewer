@@ -28,7 +28,7 @@ namespace DhcpWmiViewer
         {
             var msg = $"{title}: {ex?.GetType().FullName ?? "<no-exception-type>"}: {ex?.Message}\n\n{ex?.StackTrace}";
 
-            try { MessageBox.Show(msg, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+            try { MessageBox.Show(msg, Loc.T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
 
             try
             {

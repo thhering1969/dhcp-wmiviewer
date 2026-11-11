@@ -1,4 +1,5 @@
 // IpPickerForm.cs
+using static DhcpWmiViewer.Loc;
 using System.Globalization;
 using System.Net.NetworkInformation;
 
@@ -28,22 +29,22 @@ namespace DhcpWmiViewer
 
             // Internet-Bereiche je Zeile, damit nichts abgeschnitten wird; Label-Höhe passt sich an.
             // Ohne konfigurierte Bereiche ist die Funktion ausgeblendet (nur ein Hinweis, wo man sie einschaltet).
-            var info = $"Subnetz: {space.Subnet.Display}  •  Belegt: {reservedCount.ToString(CultureInfo.InvariantCulture)}";
+            var info = T($"Subnetz: {space.Subnet.Display}  •  Belegt: {reservedCount.ToString(CultureInfo.InvariantCulture)}", $"Subnet: {space.Subnet.Display}  •  In use: {reservedCount.ToString(CultureInfo.InvariantCulture)}");
             if (space.InternetConfigured)
             {
                 var internetText = space.Internet.IsEmpty
-                    ? " keine im Subnetz"
+                    ? T(" keine im Subnetz", " none in this subnet")
                     : string.Concat(space.Internet.Ranges.Select(r => $"\n      {NetworkHelper.UInt32ToIp(r.Start)} – {NetworkHelper.UInt32ToIp(r.End)}"));
                 info += $"\n🌐 Internet:{internetText}";
             }
             lblInfo.Text = info;
             lblInfo.Height = TextRenderer.MeasureText(lblInfo.Text, lblInfo.Font).Height + 8;
             if (!space.InternetConfigured)
-                new ToolTip().SetToolTip(lblInfo, "Internet-Bereiche markieren: Extras → Internet-Bereiche (Firewall)…");
+                new ToolTip().SetToolTip(lblInfo, T("Internet-Bereiche markieren: Extras → Internet-Bereiche (Firewall)…", "Mark internet ranges: Extras → Internet ranges (firewall)…"));
 
             // Filter-Beispiel aus dem Subnetz ableiten (statt fester Adresse)
             var firstOctets = string.Join(".", NetworkHelper.UInt32ToIp(space.Subnet.Ranges.FirstOrDefault().Start).Split('.').Take(3));
-            try { txtFilter.PlaceholderText = space.Subnet.IsEmpty ? "Filter" : $"Filter (z. B. {firstOctets}.)"; } catch { }
+            try { txtFilter.PlaceholderText = space.Subnet.IsEmpty ? "Filter" : T($"Filter (z. B. {firstOctets}.)", $"Filter (e.g. {firstOctets}.)"); } catch { }
 
             // Standard: nur internetfähige Adressen (wenn es im Subnetz welche gibt)
             chkInternetOnly.Visible = space.InternetConfigured;
@@ -86,7 +87,7 @@ namespace DhcpWmiViewer
 
         private void InitializeComponent()
         {
-            this.Text = "Verfügbare IPs wählen (0)";
+            this.Text = T("Verfügbare IPs wählen (0)", "Choose an available IP (0)");
             this.Size = new Size(480, 560);
             this.StartPosition = FormStartPosition.CenterParent;
             this.Font = new Font("Segoe UI", 10f);
@@ -97,7 +98,7 @@ namespace DhcpWmiViewer
             chkInternetOnly = new BigCheckBox
             {
                 Dock = DockStyle.Top,
-                Text = "🌐  Nur internetfähige Adressen",
+                Text = T("🌐  Nur internetfähige Adressen", "🌐  Internet-capable addresses only"),
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 ForeColor = Theme.TextPrimary,
                 Height = 38,
@@ -140,7 +141,7 @@ namespace DhcpWmiViewer
             bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
             btnOk = new Button { Text = "OK", AutoSize = true, Padding = new Padding(8) };
-            btnCancel = new Button { Text = "Abbrechen", AutoSize = true, Padding = new Padding(8) };
+            btnCancel = new Button { Text = T("Abbrechen", "Cancel"), AutoSize = true, Padding = new Padding(8) };
 
             btnOk.Click += (s, e) =>
             {
@@ -152,7 +153,7 @@ namespace DhcpWmiViewer
                 }
                 else
                 {
-                    MessageBox.Show(this, "Bitte zuerst eine IP auswählen.", "Hinweis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(this, T("Bitte zuerst eine IP auswählen.", "Please select an IP first."), T("Hinweis", "Note"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             };
 
@@ -225,7 +226,7 @@ namespace DhcpWmiViewer
         {
             var count = lstIps?.Items.Count ?? 0;
             // explizit Formatierung als Ziffer, um Verwechslung mit Buchstabe 'O' zu vermeiden
-            this.Text = $"Verfügbare IPs wählen ({count.ToString(CultureInfo.InvariantCulture)})";
+            this.Text = T($"Verfügbare IPs wählen ({count.ToString(CultureInfo.InvariantCulture)})", $"Choose an available IP ({count.ToString(CultureInfo.InvariantCulture)})");
         }
 
         private static int CompareIpStrings(string a, string b)

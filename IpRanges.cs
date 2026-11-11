@@ -57,7 +57,7 @@ namespace DhcpWmiViewer
 
         /// <summary>z. B. "10.0.0.20 (mit Internetfreigabe)" für Bestätigungen; ohne konfigurierte Bereiche nur die IP.</summary>
         public string Describe(string ip)
-            => string.IsNullOrWhiteSpace(ip) || !InternetConfigured ? ip : $"{ip} ({(IsInternet(ip) ? "mit" : "ohne")} Internetfreigabe)";
+            => string.IsNullOrWhiteSpace(ip) || !InternetConfigured ? ip : IsInternet(ip) ? Loc.T($"{ip} (mit Internetfreigabe)", $"{ip} (with internet access)") : Loc.T($"{ip} (ohne Internetfreigabe)", $"{ip} (without internet access)");
     }
 
     public static class IpRanges
@@ -95,7 +95,7 @@ namespace DhcpWmiViewer
         private static (uint Start, uint End) ToUIntRange((string Start, string End) range)
         {
             if (!NetworkHelper.TryIpToUInt32(range.Start, out var a) || !NetworkHelper.TryIpToUInt32(range.End, out var b))
-                throw new FormatException($"Ungültiger Internet-Bereich {range.Start}-{range.End}");
+                throw new FormatException(Loc.T($"Ungültiger Internet-Bereich {range.Start}-{range.End}", $"Invalid internet range {range.Start}-{range.End}"));
             return (Math.Min(a, b), Math.Max(a, b));
         }
     }

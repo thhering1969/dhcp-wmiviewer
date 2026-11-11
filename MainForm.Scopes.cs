@@ -1,5 +1,6 @@
 // MainForm.Scopes.cs
 using System.Data;
+using static DhcpWmiViewer.Loc;
 
 namespace DhcpWmiViewer
 {
@@ -13,14 +14,14 @@ namespace DhcpWmiViewer
         private async void BtnDiscover_Click(object? sender, EventArgs e)
         {
             btnDiscover.Enabled = false;
-            UpdateStatus("Discovering DHCP servers in AD...");
+            UpdateStatus(T("Suche DHCP-Server im AD...", "Discovering DHCP servers in AD..."));
             cmbDiscoveredServers.Items.Clear();
             try
             {
                 var authorized = await Task.Run(DhcpDiscovery.DiscoverDhcpServersInAD);
 
                 // Abgeschaltete Server (Autorisierung im AD noch vorhanden) vor der Anzeige aussortieren
-                UpdateStatus($"Prüfe {authorized.Count} im AD autorisierte DHCP-Server...");
+                UpdateStatus(T($"Prüfe {authorized.Count} im AD autorisierte DHCP-Server...", $"Checking {authorized.Count} DHCP servers authorized in AD..."));
                 var checks = await DhcpDiscovery.CheckServersAsync(authorized);
                 var usable = checks.Where(c => c.Usable).Select(c => c.Server).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
                 var hidden = checks.Where(c => !c.Usable).ToList();
@@ -36,17 +37,17 @@ namespace DhcpWmiViewer
                 if (cmbDiscoveredServers.Items.Count > 0)
                     cmbDiscoveredServers.SelectedIndex = 0; // übernimmt den Server ins Textfeld
 
-                var status = $"{servers.Count} DHCP-Server gefunden.";
+                var status = T($"{servers.Count} DHCP-Server gefunden.", $"{servers.Count} DHCP server(s) found.");
                 if (usable.Count == 0 && authorized.Count > 0)
-                    status += " Keiner erreichbar – VPN/Netzwerk prüfen.";
+                    status += T(" Keiner erreichbar – VPN/Netzwerk prüfen.", " None reachable – check VPN/network.");
                 else if (hidden.Count > 0)
-                    status += " Ausgeblendet: " + string.Join(", ", hidden.Select(h => $"{h.Server} ({h.Reason})"));
+                    status += T(" Ausgeblendet: ", " Hidden: ") + string.Join(", ", hidden.Select(h => $"{h.Server} ({h.Reason})"));
                 UpdateStatus(status);
                 Helpers.WriteDebugLog("Discover: " + string.Join("; ", checks.Select(c => $"{c.Server}={c.Reason}")));
             }
             catch (Exception ex)
             {
-                ShowError("DHCP-Server konnten nicht gesucht werden", null, ex);
+                ShowError(T("DHCP-Server konnten nicht gesucht werden", "Could not search for DHCP servers"), null, ex);
             }
             finally
             {
@@ -62,16 +63,18 @@ namespace DhcpWmiViewer
             if (IsLocalHost(server) && !AppEnvironment.RunningOnDhcpServer)
             {
                 MessageBox.Show(this,
-                    $"Auf diesem Rechner ({Environment.MachineName}) läuft kein DHCP-Server.\n\n" +
-                    "Bitte den Namen eines DHCP-Servers eingeben oder mit \"Discover\" die Server im Active Directory suchen.",
-                    "Kein DHCP-Server", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    T($"Auf diesem Rechner ({Environment.MachineName}) läuft kein DHCP-Server.\n\n" +
+                      "Bitte den Namen eines DHCP-Servers eingeben oder mit \"Discover\" die Server im Active Directory suchen.",
+                      $"No DHCP server is running on this computer ({Environment.MachineName}).\n\n" +
+                      "Please enter the name of a DHCP server or use \"Discover\" to find the servers in Active Directory."),
+                    T("Kein DHCP-Server", "No DHCP server"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 txtServer.Focus();
                 txtServer.SelectAll();
                 return;
             }
 
             btnExportCsv.Enabled = false;
-            UpdateStatus("Querying scopes...");
+            UpdateStatus(T("Frage Scopes ab...", "Querying scopes..."));
             SetBusy(true);
             try
             {
@@ -100,13 +103,13 @@ namespace DhcpWmiViewer
 
                 BindScopeDetails(DhcpManager.CreateTable(DhcpManager.ReservationColumns), DhcpManager.CreateTable(DhcpManager.LeaseColumns));
                 btnExportCsv.Enabled = currentTable.Rows.Count > 0;
-                UpdateStatus($"Found {currentTable.Rows.Count} scopes on {server}.{RouteSuffix(server)}");
+                UpdateStatus(T($"{currentTable.Rows.Count} Scope(s) auf {server} gefunden.{RouteSuffix(server)}", $"Found {currentTable.Rows.Count} scope(s) on {server}.{RouteSuffix(server)}"));
                 UpdateTitle(server);
                 AppConfig.SaveLastServer(server);
             }
             catch (Exception ex)
             {
-                ShowError("Scopes konnten nicht abgefragt werden", server, ex);
+                ShowError(T("Scopes konnten nicht abgefragt werden", "Could not query scopes"), server, ex);
             }
             finally
             {
@@ -133,7 +136,7 @@ namespace DhcpWmiViewer
             }
             catch (Exception ex)
             {
-                ShowError("Reservations/Leases konnten nicht geladen werden", _activeServer, ex);
+                ShowError(T("Reservations/Leases konnten nicht geladen werden", "Could not load reservations/leases"), _activeServer, ex);
             }
         }
 
@@ -149,7 +152,7 @@ namespace DhcpWmiViewer
 
             var server = _activeServer;
             SetBusy(true);
-            UpdateStatus($"Querying reservations & leases for {scopeId} on {server}...");
+            UpdateStatus(T($"Lade Reservations und Leases für {scopeId} von {server}...", $"Querying reservations & leases for {scopeId} on {server}..."));
             try
             {
                 var tRes = DhcpManager.QueryReservationsAsync(server, scopeId, GetCredentialsForServer);
@@ -159,13 +162,13 @@ namespace DhcpWmiViewer
                 if (IsStale()) return;
 
                 BindScopeDetails(tRes.Result, tLea.Result);
-                UpdateStatus($"Found {reservationTable.Rows.Count} reservation(s) and {leaseTable.Rows.Count} lease(s) in scope {scopeId}.{RouteSuffix(_activeServer)}");
+                UpdateStatus(T($"{reservationTable.Rows.Count} Reservation(s) und {leaseTable.Rows.Count} Lease(s) in Scope {scopeId}.{RouteSuffix(_activeServer)}", $"Found {reservationTable.Rows.Count} reservation(s) and {leaseTable.Rows.Count} lease(s) in scope {scopeId}.{RouteSuffix(_activeServer)}"));
                 UpdateTitle(_activeServer);
             }
             catch (Exception ex)
             {
                 if (IsStale()) return; // Fehler einer überholten Anforderung nicht anzeigen
-                UpdateStatus("Error: " + ex.Message);
+                UpdateStatus(T("Fehler: ", "Error: ") + ex.Message);
                 throw;
             }
             finally
@@ -202,14 +205,14 @@ namespace DhcpWmiViewer
             }
             catch (Exception ex)
             {
-                UpdateStatus("Aktualisierung fehlgeschlagen: " + ex.Message);
+                UpdateStatus(T("Aktualisierung fehlgeschlagen: ", "Refresh failed: ") + ex.Message);
             }
         }
 
         private ContextMenuStrip CreateScopesContextMenu()
         {
             var menu = new ContextMenuStrip();
-            var replicate = new ToolStripMenuItem("Bereich replizieren...", null, async (s, e) => await ReplicateSelectedScopeAsync());
+            var replicate = new ToolStripMenuItem(T("Bereich replizieren...", "Replicate scope..."), null, async (s, e) => await ReplicateSelectedScopeAsync());
             menu.Items.Add(replicate);
             menu.Opening += (s, e) =>
             {
@@ -228,14 +231,15 @@ namespace DhcpWmiViewer
             var label = string.IsNullOrWhiteSpace(name) ? scopeId : $"{name} ({scopeId})";
 
             if (MessageBox.Show(this,
-                    $"Bereich {label} jetzt vom Server {_activeServer} auf den Failover-Partner replizieren?\n\n" +
-                    "Die Konfiguration des Partners wird dabei mit diesem Server überschrieben.",
-                    "Bereich replizieren", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                    T($"Bereich {label} jetzt vom Server {_activeServer} auf den Failover-Partner replizieren?\n\n" +
+                      "Die Konfiguration des Partners wird dabei mit diesem Server überschrieben.",
+                      $"Replicate scope {label} from server {_activeServer} to the failover partner now?\n\n" +
+                      "The partner's configuration of this scope will be overwritten with this server's."),
+                    T("Bereich replizieren", "Replicate scope"), MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                 return;
 
             var result = await ReplicateAndLogAsync(ManualReplication, scopeId, string.Empty, string.Empty);
-            var warn = result.Contains("FEHLGESCHLAGEN") || result.Contains("ÜBERSPRUNGEN") || result.Contains("NICHT geschrieben");
-            MessageBox.Show(this, result, "Bereich replizieren", MessageBoxButtons.OK, warn ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            MessageBox.Show(this, result.Text, T("Bereich replizieren", "Replicate scope"), MessageBoxButtons.OK, result.IsWarning ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
 
         /// <summary>Hinweis für die Statusleiste, über welchen Weg abgefragt wurde (" (via RSAT)" / " (via WinRM)").</summary>

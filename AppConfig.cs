@@ -76,6 +76,11 @@ namespace DhcpWmiViewer
                             LastServer = value;
                             break;
 
+                        case "language":
+                            Language = value;
+                            Loc.SetLanguage(value);
+                            break;
+
                         case "internetranges":
                             InternetRanges = ParseRanges(value, out _);
                             break;
@@ -105,6 +110,16 @@ namespace DhcpWmiViewer
         /// Leer = Funktion aus (keine 🌐-Markierung, kein Filter). Einstellbar über Extras → Internet-Bereiche.
         /// </summary>
         public static IReadOnlyList<(string Start, string End)> InternetRanges { get; private set; } = Array.Empty<(string, string)>();
+
+        /// <summary>Gespeicherte Sprache: "de", "en" oder leer (= automatisch nach Windows-Anzeigesprache).</summary>
+        public static string Language { get; private set; } = string.Empty;
+
+        /// <summary>Speichert die Sprache ("de", "en" oder "" = automatisch); wirkt nach Neustart.</summary>
+        public static void SaveLanguage(string language)
+        {
+            SaveValue("Language", language);
+            Language = language;
+        }
 
         /// <summary>Speichert die Internet-Bereiche in der Benutzerdatei (leere Liste = Funktion aus). Wirft bei Schreibfehlern.</summary>
         public static void SaveInternetRanges(IReadOnlyList<(string Start, string End)> ranges)

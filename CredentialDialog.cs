@@ -1,4 +1,5 @@
 // CredentialDialog.cs
+using static DhcpWmiViewer.Loc;
 using System.ComponentModel;
 
 namespace DhcpWmiViewer
@@ -26,7 +27,7 @@ namespace DhcpWmiViewer
 
         private void InitializeComponent()
         {
-            Text = "Remote Credentials";
+            Text = T("Anmeldedaten", "Remote credentials");
             Width = 420;
             Height = 190;
             StartPosition = FormStartPosition.CenterParent;
@@ -38,7 +39,7 @@ namespace DhcpWmiViewer
             // Info-Label
             lblInfo = new Label 
             { 
-                Text = "Provide credentials for remote server:",
+                Text = T("Anmeldedaten für den Server:", "Provide credentials for remote server:"),
                 Dock = DockStyle.Top,
                 Height = 40,
                 Padding = new Padding(8, 8, 8, 0),
@@ -63,7 +64,7 @@ namespace DhcpWmiViewer
             // Username
             panel.Controls.Add(new Label 
             { 
-                Text = "Username:", 
+                Text = T("Benutzername:", "Username:"), 
                 Anchor = AnchorStyles.Left | AnchorStyles.Top, 
                 AutoSize = true 
             }, 0, 0);
@@ -78,7 +79,7 @@ namespace DhcpWmiViewer
             // Password
             panel.Controls.Add(new Label 
             { 
-                Text = "Password:", 
+                Text = T("Kennwort:", "Password:"), 
                 Anchor = AnchorStyles.Left | AnchorStyles.Top, 
                 AutoSize = true 
             }, 0, 1);
@@ -110,7 +111,7 @@ namespace DhcpWmiViewer
             
             btnCancel = new Button 
             { 
-                Text = "Cancel", 
+                Text = T("Abbrechen", "Cancel"), 
                 DialogResult = DialogResult.Cancel, 
                 Padding = new Padding(6),
                 Margin = new Padding(3),
@@ -134,7 +135,7 @@ namespace DhcpWmiViewer
         {
             if (!string.IsNullOrEmpty(Server))
             {
-                lblInfo.Text = $"Provide credentials for {Server}:";
+                lblInfo.Text = T($"Anmeldedaten für {Server}:", $"Provide credentials for {Server}:");
                 txtUser.Text = $"{Environment.UserDomainName}\\{Environment.UserName}";
             }
             txtPwd.Focus();

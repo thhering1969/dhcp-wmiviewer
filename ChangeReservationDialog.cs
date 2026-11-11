@@ -1,4 +1,5 @@
 // ChangeReservationDialog.cs
+using static DhcpWmiViewer.Loc;
 using System.ComponentModel;
 using System.Net;
 
@@ -66,7 +67,7 @@ namespace DhcpWmiViewer
             this.MinimumSize = new Size(560, 280);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
-            this.Text = "Reservation ändern";
+            this.Text = T("Reservation ändern", "Edit reservation");
 
             var main = new TableLayoutPanel
             {
@@ -84,7 +85,7 @@ namespace DhcpWmiViewer
             main.RowStyles.Add(new RowStyle(SizeType.Absolute, 56)); // Buttons
 
             // Left label for IP
-            main.Controls.Add(new Label { Text = "IP-Adresse:", Anchor = AnchorStyles.Left | AnchorStyles.Right, AutoSize = true }, 0, 0);
+            main.Controls.Add(new Label { Text = T("IP-Adresse:", "IP address:"), Anchor = AnchorStyles.Left | AnchorStyles.Right, AutoSize = true }, 0, 0);
 
             // IP row: TableLayoutPanel with 3 columns:
             // [txtIp (percent 100)] [chkChangeIp (auto)] [lblChkInfo (auto)]
@@ -122,7 +123,7 @@ namespace DhcpWmiViewer
                 AutoSize = true,
                 Anchor = AnchorStyles.Left,
                 ForeColor = SystemColors.GrayText,
-                Text = "IP-Adressänderung bestätigen",
+                Text = T("IP-Adressänderung bestätigen", "Confirm IP address change"),
                 Padding = new Padding(0, 6, 0, 0),
                 Margin = new Padding(4, 0, 0, 0),
                 Cursor = Cursors.Hand
@@ -140,7 +141,7 @@ namespace DhcpWmiViewer
             main.Controls.Add(txtName, 1, 1);
 
             // Description row
-            main.Controls.Add(new Label { Text = "Beschreibung:", Anchor = AnchorStyles.Left | AnchorStyles.Right, AutoSize = true }, 0, 2);
+            main.Controls.Add(new Label { Text = T("Beschreibung:", "Description:"), Anchor = AnchorStyles.Left | AnchorStyles.Right, AutoSize = true }, 0, 2);
             txtDescription = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom, Multiline = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
             main.Controls.Add(txtDescription, 1, 2);
 
@@ -153,7 +154,7 @@ namespace DhcpWmiViewer
                 Padding = new Padding(6)
             };
             btnOk = new Button { Text = "OK", AutoSize = true, Padding = new Padding(6) };
-            btnCancel = new Button { Text = "Abbrechen", AutoSize = true, Padding = new Padding(6) };
+            btnCancel = new Button { Text = T("Abbrechen", "Cancel"), AutoSize = true, Padding = new Padding(6) };
             btnOk.Click += BtnOk_Click;
             btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
             buttonPanel.Controls.Add(btnOk);
@@ -201,7 +202,7 @@ namespace DhcpWmiViewer
                 return $"Scope: {_scopeStart}–{_scopeEnd}";
             if (hasMask)
                 return $"Mask: {_scopeMask}";
-            return "(keine Scope-Info)";
+            return T("(keine Scope-Info)", "(no scope info)");
         }
 
         private void BtnOk_Click(object? sender, EventArgs e)
@@ -211,7 +212,7 @@ namespace DhcpWmiViewer
                 var newIp = txtIp.Text.Trim();
                 if (!IPAddress.TryParse(newIp, out _))
                 {
-                    MessageBox.Show(this, "Die eingegebene IP-Adresse ist ungültig.", "Ungültige IP", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, T("Die eingegebene IP-Adresse ist ungültig.", "The IP address entered is invalid."), T("Ungültige IP", "Invalid IP"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
@@ -224,10 +225,11 @@ namespace DhcpWmiViewer
 
                 if (!ok)
                 {
-                    string maskInfo = string.IsNullOrWhiteSpace(_scopeMask) ? "<keine Maske verfügbar>" : _scopeMask;
+                    string maskInfo = string.IsNullOrWhiteSpace(_scopeMask) ? T("<keine Maske verfügbar>", "<no mask available>") : _scopeMask;
                     MessageBox.Show(this,
-                        $"Die IP ist weder im Scope-Bereich ({_scopeStart} – {_scopeEnd}) noch im selben Subnetz (Maske: {maskInfo}).",
-                        "Ungültige IP",
+                        T($"Die IP ist weder im Scope-Bereich ({_scopeStart} – {_scopeEnd}) noch im selben Subnetz (Maske: {maskInfo}).",
+                          $"The IP is neither in the scope range ({_scopeStart} – {_scopeEnd}) nor in the same subnet (mask: {maskInfo})."),
+                        T("Ungültige IP", "Invalid IP"),
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
                     return;

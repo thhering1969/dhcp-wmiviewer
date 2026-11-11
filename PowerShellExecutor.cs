@@ -178,7 +178,7 @@ namespace DhcpWmiViewer
             }
 
             var remote = await InvokeScriptAsync(server, script, getCredentials).ConfigureAwait(false);
-            _lastRoute[targetHost] = isLocalTarget && AppEnvironment.RunningOnDhcpServer ? "lokal" : "WinRM";
+            _lastRoute[targetHost] = isLocalTarget && AppEnvironment.RunningOnDhcpServer ? Loc.T("lokal", "local") : "WinRM";
             return remote;
         }
 

@@ -62,7 +62,7 @@ namespace DhcpWmiViewer
             this.lblIp.Name = "lblIp";
             this.lblIp.Size = new System.Drawing.Size(61, 13);
             this.lblIp.TabIndex = 0;
-            this.lblIp.Text = "IP-Adresse:";
+            this.lblIp.Text = Loc.T("IP-Adresse:", "IP address:");
             // 
             // txtIp
             // 
@@ -77,7 +77,7 @@ namespace DhcpWmiViewer
             this.btnPickIp.Name = "btnPickIp";
             this.btnPickIp.Size = new System.Drawing.Size(90, 23);
             this.btnPickIp.TabIndex = 2;
-            this.btnPickIp.Text = "IP wählen...";
+            this.btnPickIp.Text = Loc.T("IP wählen...", "Pick IP...");
             this.btnPickIp.UseVisualStyleBackColor = true;
             this.btnPickIp.Click += new System.EventHandler(this.btnPickIp_Click);
             // 
@@ -104,7 +104,7 @@ namespace DhcpWmiViewer
             this.lblName.Name = "lblName";
             this.lblName.Size = new System.Drawing.Size(70, 13);
             this.lblName.TabIndex = 5;
-            this.lblName.Text = "Name / Host:";
+            this.lblName.Text = Loc.T("Name / Host:", "Name / host:");
             // 
             // txtName
             // 
@@ -120,7 +120,7 @@ namespace DhcpWmiViewer
             this.lblDescription.Name = "lblDescription";
             this.lblDescription.Size = new System.Drawing.Size(69, 13);
             this.lblDescription.TabIndex = 7;
-            this.lblDescription.Text = "Beschreibung:";
+            this.lblDescription.Text = Loc.T("Beschreibung:", "Description:");
             // 
             // txtDescription
             // 
@@ -138,8 +138,7 @@ namespace DhcpWmiViewer
             this.lblHint.Name = "lblHint";
             this.lblHint.Size = new System.Drawing.Size(355, 13);
             this.lblHint.TabIndex = 9;
-            this.lblHint.Text = "Wenn Sie die IP geändert haben, aktivieren Sie 'IP übernehmen'. Beschreibung wir" +
-    "d";
+            this.lblHint.Text = Loc.T("Freie Adresse über \"IP wählen...\" auswählen oder direkt eintragen.", "Pick a free address with \"Pick IP...\" or type it in.");
             // 
             // btnOk
             // 
@@ -160,7 +159,7 @@ namespace DhcpWmiViewer
             this.btnCancel.Name = "btnCancel";
             this.btnCancel.Size = new System.Drawing.Size(75, 23);
             this.btnCancel.TabIndex = 10;
-            this.btnCancel.Text = "Abbrechen";
+            this.btnCancel.Text = Loc.T("Abbrechen", "Cancel");
             this.btnCancel.UseVisualStyleBackColor = true;
             // 
             // ConvertLeaseToReservationDialog
@@ -187,7 +186,7 @@ namespace DhcpWmiViewer
             this.MinimizeBox = false;
             this.Name = "ConvertLeaseToReservationDialog";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "Convert Lease / Edit Reservation";
+            this.Text = Loc.T("Reservation aus Lease erstellen", "Create reservation from lease");
             this.ResumeLayout(false);
             this.PerformLayout();
         }

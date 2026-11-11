@@ -1,5 +1,6 @@
 // MainForm.Reservations.cs
 using System.Net;
+using static DhcpWmiViewer.Loc;
 
 namespace DhcpWmiViewer
 {
@@ -8,8 +9,8 @@ namespace DhcpWmiViewer
         private ContextMenuStrip CreateReservationsContextMenu()
         {
             var menu = new ContextMenuStrip();
-            var change = new ToolStripMenuItem("Ändern...", null, async (s, e) => await ChangeSelectedReservationAsync());
-            var delete = new ToolStripMenuItem("Löschen", null, async (s, e) => await DeleteSelectedReservationAsync());
+            var change = new ToolStripMenuItem(T("Ändern...", "Edit..."), null, async (s, e) => await ChangeSelectedReservationAsync());
+            var delete = new ToolStripMenuItem(T("Löschen", "Delete"), null, async (s, e) => await DeleteSelectedReservationAsync());
             menu.Items.AddRange(new ToolStripItem[] { change, new ToolStripSeparator(), delete });
 
             menu.Opening += (s, e) =>
@@ -51,38 +52,38 @@ namespace DhcpWmiViewer
 
             if (dlg.IpChanged && !IPAddress.TryParse(newIp, out _))
             {
-                MessageBox.Show(this, "Die eingegebene IP ist ungültig.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Die eingegebene IP ist ungültig.", "The IP address entered is invalid."), T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             var space = GetSelectedScopeAddressSpace();
             var fields = new List<ConfirmChangeDialog.Field>
             {
-                new("IP-Adresse", space.Describe(ip), space.Describe(newIp)),
-                new("ClientId (MAC)", clientId, clientId),
-                new("Name", name, newName),
-                new("Beschreibung", description, newDescription)
+                new(T("IP-Adresse", "IP address"), space.Describe(ip), space.Describe(newIp), "IP"),
+                new("ClientId (MAC)", clientId, clientId, "ClientId"),
+                new("Name", name, newName, "Name"),
+                new(T("Beschreibung", "Description"), description, newDescription, "Description")
             };
             if (!fields.Any(f => f.Changed))
             {
-                MessageBox.Show(this, "Es wurde nichts geändert.", "Keine Änderung", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, T("Es wurde nichts geändert.", "Nothing was changed."), T("Keine Änderung", "No change"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            if (!ConfirmChangeDialog.Confirm(this, "Reservation ändern", $"Reservation {ip} ändern", server, scopeId, fields))
+            if (!ConfirmChangeDialog.Confirm(this, T("Reservation ändern", "Edit reservation"), T($"Reservation {ip} ändern", $"Edit reservation {ip}"), server, scopeId, fields))
                 return;
 
             var ok = dlg.IpChanged
                 ? await RunReservationChangeAsync(
                     () => DhcpManager.ChangeReservationIpAsync(server, scopeId, ip, newIp, clientId, newName, newDescription, GetCredentialsForServer),
-                    "Fehler beim Ändern der Reservation")
+                    T("Fehler beim Ändern der Reservation", "Error changing the reservation"))
                 : await RunReservationChangeAsync(
                     () => DhcpManager.UpdateReservationAsync(server, scopeId, ip, clientId, newName, newDescription, GetCredentialsForServer),
-                    "Fehler beim Aktualisieren der Reservation");
+                    T("Fehler beim Aktualisieren der Reservation", "Error updating the reservation"));
             if (!ok) return;
 
-            var replication = await ReplicateAndLogAsync("ChangeReservation", scopeId, newIp, $"ClientId={clientId};{ConfirmChangeDialog.Summarize(fields, ";")}");
-            ShowSuccess("Reservation geändert:\n\n" + ConfirmChangeDialog.Summarize(fields), replication);
+            var replication = await ReplicateAndLogAsync("ChangeReservation", scopeId, newIp, $"ClientId={clientId};{ConfirmChangeDialog.SummarizeForLog(fields)}");
+            ShowSuccess(T("Reservation geändert:", "Reservation changed:") + "\n\n" + ConfirmChangeDialog.Summarize(fields), replication);
         }
 
         private async Task DeleteSelectedReservationAsync()
@@ -93,21 +94,21 @@ namespace DhcpWmiViewer
             var server = _activeServer;
             var fields = new List<ConfirmChangeDialog.Field>
             {
-                new("IP-Adresse", GetSelectedScopeAddressSpace().Describe(ip), null),
-                new("ClientId (MAC)", clientId, null),
-                new("Name", name, null),
-                new("Beschreibung", description, null)
+                new(T("IP-Adresse", "IP address"), GetSelectedScopeAddressSpace().Describe(ip), null, "IP"),
+                new("ClientId (MAC)", clientId, null, "ClientId"),
+                new("Name", name, null, "Name"),
+                new(T("Beschreibung", "Description"), description, null, "Description")
             };
-            if (!ConfirmChangeDialog.Confirm(this, "Reservation löschen", $"Reservation {ip} löschen", server, scopeId, fields, destructive: true))
+            if (!ConfirmChangeDialog.Confirm(this, T("Reservation löschen", "Delete reservation"), T($"Reservation {ip} löschen", $"Delete reservation {ip}"), server, scopeId, fields, destructive: true))
                 return;
 
             var ok = await RunReservationChangeAsync(
                 () => DhcpManager.DeleteReservationAsync(server, scopeId, ip, GetCredentialsForServer),
-                "Fehler beim Löschen der Reservation");
+                T("Fehler beim Löschen der Reservation", "Error deleting the reservation"));
             if (!ok) return;
 
             var replication = await ReplicateAndLogAsync("DeleteReservation", scopeId, ip, $"Name={name};ClientId={clientId}");
-            ShowSuccess($"Reservation gelöscht:\n\nIP: {ip}\nName: {name}\nClientId: {clientId}", replication);
+            ShowSuccess(T("Reservation gelöscht:", "Reservation deleted:") + $"\n\nIP: {ip}\nName: {name}\nClientId: {clientId}", replication);
         }
 
         /// <summary>
@@ -122,7 +123,7 @@ namespace DhcpWmiViewer
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, errorTitle + ":\n" + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, errorTitle + ":\n" + ex.Message, T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
             finally
@@ -134,12 +135,12 @@ namespace DhcpWmiViewer
             return true;
         }
 
-        /// <summary>Erfolgsmeldung inkl. Ergebnis der Failover-Replikation (Warnsymbol, wenn Replikation/Protokoll fehlschlug).</summary>
-        private void ShowSuccess(string message, string replication)
+        /// <summary>Erfolgsmeldung inkl. Ergebnis von "Bereich replizieren" (Warnsymbol, wenn Replikation/Protokoll fehlschlug).</summary>
+        private void ShowSuccess(string message, ReplicationReport replication)
         {
-            var warn = replication.Contains("FEHLGESCHLAGEN") || replication.Contains("ÜBERSPRUNGEN") || replication.Contains("NICHT geschrieben");
-            MessageBox.Show(this, message + "\n\n" + replication, warn ? "Erfolgreich – mit Warnung" : "Erfolgreich",
-                MessageBoxButtons.OK, warn ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            MessageBox.Show(this, message + "\n\n" + replication.Text,
+                replication.IsWarning ? T("Erfolgreich – mit Warnung", "Done – with warning") : T("Erfolgreich", "Done"),
+                MessageBoxButtons.OK, replication.IsWarning ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
 
         private bool TryGetSelectedReservation(out string ip, out string clientId, out string name, out string description, out string scopeId)
@@ -148,7 +149,7 @@ namespace DhcpWmiViewer
 
             if (dgvReservations.SelectedRows.Count != 1)
             {
-                MessageBox.Show(this, "Bitte zuerst genau eine Reservation auswählen.", "Keine Auswahl", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, T("Bitte zuerst genau eine Reservation auswählen.", "Please select exactly one reservation first."), T("Keine Auswahl", "No selection"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return false;
             }
 
@@ -159,14 +160,14 @@ namespace DhcpWmiViewer
             description = CellText(row, "Description");
             if (string.IsNullOrWhiteSpace(ip))
             {
-                MessageBox.Show(this, "Die ausgewählte Reservation hat keine IP-Adresse.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Die ausgewählte Reservation hat keine IP-Adresse.", "The selected reservation has no IP address."), T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
 
             scopeId = GetSelectedScopeId();
             if (string.IsNullOrWhiteSpace(scopeId))
             {
-                MessageBox.Show(this, "Bitte zuerst einen Scope oben auswählen.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Bitte zuerst einen Scope oben auswählen.", "Please select a scope above first."), T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
             return true;

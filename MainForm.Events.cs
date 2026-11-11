@@ -1,4 +1,5 @@
 // MainForm.Events.cs
+using static DhcpWmiViewer.Loc;
 using System.Data;
 using System.Diagnostics.Eventing.Reader;
 using System.Text;
@@ -14,10 +15,10 @@ namespace DhcpWmiViewer
         {
             var eventsPanel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface, MinimumSize = new Size(300, 160) };
 
-            btnFetchEvents = Theme.PrimaryButton("Fetch Events");
-            btnFetchEvents.Click += async (s, e) => await WaitDialog.RunAsync(this, "Events werden geladen…", FetchAndBindEventsAsync);
+            btnFetchEvents = Theme.PrimaryButton(T("Events laden", "Fetch Events"));
+            btnFetchEvents.Click += async (s, e) => await WaitDialog.RunAsync(this, T("Events werden geladen…", "Loading events…"), FetchAndBindEventsAsync);
 
-            var btnClearEvents = Theme.SecondaryButton("Clear");
+            var btnClearEvents = Theme.SecondaryButton(T("Leeren", "Clear"));
             btnClearEvents.Click += (s, e) => eventsTable.Rows.Clear();
 
             nudEventsLookbackDays = new NumericUpDown { Minimum = 1, Maximum = 30, Value = 14, Width = 60, Increment = 1, Margin = new Padding(0, 3, 0, 0) };
@@ -37,7 +38,7 @@ namespace DhcpWmiViewer
             {
                 btnFetchEvents,
                 btnClearEvents,
-                Caption("Tage:", 12),
+                Caption(T("Tage:", "Days:"), 12),
                 nudEventsLookbackDays,
                 Caption("Max:", 12),
                 nudEventsMax
@@ -89,7 +90,7 @@ namespace DhcpWmiViewer
                 var servers = await GetActiveDhcpServersAsync();
                 if (servers.Count == 0)
                 {
-                    MessageBox.Show(this, "Es wurde kein aktiver DHCP-Server gefunden. Bitte Server eingeben oder \"Discover\" ausführen.",
+                    MessageBox.Show(this, T("Es wurde kein aktiver DHCP-Server gefunden. Bitte Server eingeben oder \"Discover\" ausführen.", "No active DHCP server found. Please enter a server or run \"Discover\"."),
                         "Events", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
@@ -112,14 +113,14 @@ namespace DhcpWmiViewer
                     dgvEvents.CurrentCell = dgvEvents.Rows[0].Cells[0];
                     dgvEvents.FirstDisplayedScrollingRowIndex = 0;
                 }
-                var perServer = string.Join(", ", results.Select(r => r.Rows == null ? $"{r.Server}: nicht erreichbar" : $"{r.Server}: {r.Rows.Count}"));
-                UpdateStatus($"{rows.Count} Event(s), letzte {lookbackDays} Tage – {perServer}");
+                var perServer = string.Join(", ", results.Select(r => r.Rows == null ? $"{r.Server}: " + T("nicht erreichbar", "unreachable") : $"{r.Server}: {r.Rows.Count}"));
+                UpdateStatus(T($"{rows.Count} Event(s), letzte {lookbackDays} Tage – {perServer}", $"{rows.Count} event(s), last {lookbackDays} days – {perServer}"));
             }
             catch (Exception ex)
             {
                 try { File.WriteAllText(errPath, ex.ToString(), Encoding.UTF8); } catch { }
-                MessageBox.Show(this, "Fehler beim Abrufen der Events: " + ex.Message + Environment.NewLine + $"(Details: {Path.GetFileName(errPath)})",
-                    "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Fehler beim Abrufen der Events: ", "Error fetching events: ") + ex.Message + Environment.NewLine + $"(Details: {Path.GetFileName(errPath)})",
+                    T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -142,7 +143,7 @@ namespace DhcpWmiViewer
 
             if (servers.Count == 0)
             {
-                UpdateStatus("Suche aktive DHCP-Server im AD...");
+                UpdateStatus(T("Suche aktive DHCP-Server im AD...", "Searching active DHCP servers in AD..."));
                 var authorized = await Task.Run(DhcpDiscovery.DiscoverDhcpServersInAD);
                 var checks = await DhcpDiscovery.CheckServersAsync(authorized);
                 servers = checks.Where(c => c.Usable).Select(c => c.Server).ToList();

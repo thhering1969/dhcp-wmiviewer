@@ -1,4 +1,5 @@
 // ConvertLeaseToReservationDialog.cs
+using static DhcpWmiViewer.Loc;
 using System.ComponentModel;
 using System.Data;
 using System.Net;
@@ -83,7 +84,7 @@ namespace DhcpWmiViewer
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Fehler beim Öffnen des IP-Pickers:\r\n" + ex.Message, "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Fehler beim Öffnen der IP-Auswahl:", "Error opening the IP picker:") + "\r\n" + ex.Message, T("Fehler", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -103,7 +104,7 @@ namespace DhcpWmiViewer
             var space = AddressSpace;
             if (space == null || space.Subnet.IsEmpty)
             {
-                MessageBox.Show(this, "Der Adressbereich dieses Scopes konnte nicht ermittelt werden.", "IP-Auswahl", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, T("Der Adressbereich dieses Scopes konnte nicht ermittelt werden.", "The address range of this scope could not be determined."), T("IP-Auswahl", "IP picker"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -115,7 +116,7 @@ namespace DhcpWmiViewer
                 return;
 
             txtIp.Text = picker.SelectedIp;
-            MessageBox.Show(this, "IP ausgewählt. Bitte mit OK bestätigen, um die Reservation anzulegen.", "Hinweis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, T("IP ausgewählt. Bitte mit OK bestätigen, um die Reservation anzulegen.", "IP selected. Confirm with OK to create the reservation."), T("Hinweis", "Note"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         /// <summary>

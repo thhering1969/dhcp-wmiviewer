@@ -1,4 +1,5 @@
 // MainForm.cs
+using static DhcpWmiViewer.Loc;
 // Hauptfenster. Aufteilung:
 //   MainForm.cs              Felder, Konstruktor, aktiver Server, Credentials, Status
 //   MainForm.Layout.cs       Aufbau der Controls, Spaltenbreiten
@@ -80,7 +81,7 @@ namespace DhcpWmiViewer
             }
 
             // Debug-Vorschau der PowerShell-Befehle: Menü Extras (standardmäßig aus)
-            UpdateStatus("Bereit – Server eingeben und \"Query Scopes\" klicken (oder Enter).");
+            UpdateStatus(T("Bereit – Server eingeben und \"Query Scopes\" klicken (oder Enter).", "Ready – enter a server and click \"Query Scopes\" (or press Enter)."));
         }
 
         // ------------------------------------------------------------------
@@ -158,16 +159,17 @@ namespace DhcpWmiViewer
             try { File.AppendAllText(logPath, $"{DateTime.Now:s} - {title} (Server: {server}){Environment.NewLine}{details}{Environment.NewLine}--------------------{Environment.NewLine}"); } catch { }
 
             var msg = ex.Message;
-            var target = string.IsNullOrWhiteSpace(server) ? "der Server" : server;
+            var target = string.IsNullOrWhiteSpace(server) ? T("der Server", "the server") : server;
             string hint;
             if (msg.Contains("no credentials were provided", StringComparison.OrdinalIgnoreCase))
-                hint = $"Die Anmeldung an {target} wurde abgebrochen.";
+                hint = T($"Die Anmeldung an {target} wurde abgebrochen.", $"Signing in to {target} was cancelled.");
             else if (msg.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) || msg.Contains("Zugriff verweigert", StringComparison.OrdinalIgnoreCase))
-                hint = $"Zugriff auf {target} verweigert. Der Benutzer braucht Rechte als DHCP-Administrator.";
+                hint = T($"Zugriff auf {target} verweigert. Der Benutzer braucht Rechte als DHCP-Administrator.", $"Access to {target} denied. The user needs DHCP administrator rights.");
             else if (msg.Contains("WinRM", StringComparison.OrdinalIgnoreCase) || msg.Contains("WS-Management", StringComparison.OrdinalIgnoreCase)
                      || msg.Contains("keine Verbindung", StringComparison.OrdinalIgnoreCase) || msg.Contains("cannot connect", StringComparison.OrdinalIgnoreCase)
                      || msg.Contains("auth/transport", StringComparison.OrdinalIgnoreCase))
-                hint = $"{target} ist nicht erreichbar.\n\nMögliche Ursachen:\n• Server ausgeschaltet oder Name falsch\n• VPN-Verbindung getrennt\n• WinRM auf dem Server nicht aktiviert";
+                hint = T($"{target} ist nicht erreichbar.\n\nMögliche Ursachen:\n• Server ausgeschaltet oder Name falsch\n• VPN-Verbindung getrennt\n• WinRM auf dem Server nicht aktiviert",
+                         $"{target} is not reachable.\n\nPossible causes:\n• Server is off or the name is wrong\n• VPN disconnected\n• WinRM not enabled on the server");
             else
             {
                 hint = msg.Length > 400 ? msg[..400] + "…" : msg;
@@ -194,11 +196,11 @@ namespace DhcpWmiViewer
             try
             {
                 CsvExport.Write(currentTable, sfd.FileName);
-                MessageBox.Show(this, "Export completed.", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, T("Export abgeschlossen.", "Export completed."), "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Export fehlgeschlagen: " + ex.Message, "Export", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, T("Export fehlgeschlagen: ", "Export failed: ") + ex.Message, "Export", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -210,21 +212,17 @@ namespace DhcpWmiViewer
 
             var message = "DHCP WMI Viewer\n" +
                           $"Version: {version}\n\n" +
-                          "Eine Windows Forms-Anwendung zur Verwaltung von DHCP-Servern\n" +
-                          "mit PowerShell- und WMI-Integration.\n\n" +
-                          "Aktuelle Sitzung:\n" +
-                          $"Administrator: {(isAdmin ? "Ja" : "Nein")}\n\n" +
+                          T("Verwaltung von Windows-DHCP-Servern: Scopes, Reservierungen, Leases,\n" +
+                            "Bereich replizieren (Failover), Protokoll im EventLog.\n\n",
+                            "Management of Windows DHCP servers: scopes, reservations, leases,\n" +
+                            "scope replication (failover), event log audit trail.\n\n") +
+                          T("Aktuelle Sitzung:\n", "Current session:\n") +
+                          $"Administrator: {(isAdmin ? T("Ja", "Yes") : T("Nein", "No"))}\n\n" +
                           $"{userInfo}\n\n" +
-                          "Funktionen:\n" +
-                          "• DHCP-Server-Erkennung\n" +
-                          "• Scope- und Lease-Verwaltung\n" +
-                          "• Reservierungen erstellen/ändern\n" +
-                          "• PowerShell-Integration\n" +
-                          "• CSV-Export\n" +
-                          "• Netzwerk-Ping-Tests\n\n" +
-                          "© 2025 - Entwickelt für Windows Server-Umgebungen";
+                          "github.com/thhering1969/dhcp-wmiviewer\n" +
+                          T("MIT-Lizenz", "MIT License");
 
-            MessageBox.Show(this, message, "Über DHCP WMI Viewer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, message, T("Über DHCP WMI Viewer", "About DHCP WMI Viewer"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         /// <summary>Wählt bei Rechtsklick die Zeile unter dem Mauszeiger aus (das Kontextmenü zeigt das Grid selbst).</summary>
