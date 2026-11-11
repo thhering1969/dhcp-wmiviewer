@@ -1,0 +1,45 @@
+# Baut bei jedem Tag "v*" (z. B. v1.1.0) die Portable-Versionen und veröffentlicht sie als GitHub-Release.
+#   git tag v1.1.0
+#   git push origin v1.1.0
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore DhcpWmiViewer.csproj -r win-x64
+
+      - name: Publish (Single-File EXE)
+        run: dotnet publish DhcpWmiViewer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true --no-restore -o publish/single
+
+      - name: Publish (Ordner für ZIP)
+        run: dotnet publish DhcpWmiViewer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false --no-restore -o publish/files
+
+      - name: Artefakte vorbereiten
+        shell: pwsh
+        run: |
+          Move-Item publish/single/DhcpWmiViewer.exe DhcpWmiViewer-Portable.exe
+          Compress-Archive -Path "publish/files/*" -DestinationPath DhcpWmiViewer-Portable.zip
+
+      - name: GitHub-Release erstellen
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            DhcpWmiViewer-Portable.exe
+            DhcpWmiViewer-Portable.zip
